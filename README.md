@@ -65,14 +65,47 @@ ai-mail-relay
 3. 将筛选出的论文提交给 LLM 生成摘要
 4. 通过 SMTP 发送邮件：正文为摘要，附件为详细内容（Markdown 文本）
 
-## 定时任务示例
-可以配合 `cron` 或操作系统任务计划定时执行，例如：
+## 服务器部署
 
-```cron
-0 8 * * 1-5 /usr/bin/env -S bash -lc 'cd /path/to/AI_mail_relay_app && ai-mail-relay'
+**一键部署脚本**（推荐）：
+
+```bash
+# 1. 运行部署脚本
+./deploy/deploy.sh
+
+# 2. 编辑配置文件
+vim .env
+
+# 3. 设置定时任务（默认每天 11:00, 12:00, 13:00 北京时间运行）
+./deploy/setup_cron.sh
 ```
 
-## 开发建议
+**详细部署文档**: 请查看 [DEPLOY.md](DEPLOY.md)
+
+### 定时任务
+
+程序支持通过 Cron 设置定时运行：
+
+```bash
+# 使用自动设置脚本
+./deploy/setup_cron.sh
+
+# 或手动添加 cron 任务
+crontab -e
+# 添加: 0 11,12,13 * * * cd /path/to/AI_mail_relay_app && ./deploy/run.sh
+```
+
+**日志查看**：
+```bash
+# 查看最新运行日志
+tail -f logs/cron.log
+
+# 查看所有运行记录
+ls -lt logs/run_*.log
+```
+
+## 开发调试
 - 日志等级可通过 `--log-level` 调整
-- 如需本地调试，可使用 `python -m ai_mail_relay.main --log-level DEBUG`
+- 本地调试: `python -m ai_mail_relay.main --log-level DEBUG`
+- 测试少量论文: `python test_limited.py`（只处理前 3 篇）
 - 可在 `ARXIV_ALLOWED_CATEGORIES` 中自定义领域
