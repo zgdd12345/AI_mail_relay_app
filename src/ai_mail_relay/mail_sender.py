@@ -79,37 +79,51 @@ class MailSender:
             papers_html += f"""
     <div class="paper-card">
       <div class="paper-header">
-        <div class="paper-number">论文 {idx}</div>
-        <div class="paper-title">{self._escape_html(paper.title)}</div>
+        <span class="paper-number">论文 {idx}</span>
+        <span class="separator">|</span>
+        <span class="paper-title">{self._escape_html(paper.title)}</span>
       </div>
 
-      <div class="paper-info">
-        {'<div class="work-summary">' + self._escape_html(paper.summary or '正在生成工作内容摘要...') + '</div>' if paper.summary else ''}
-        <div class="info-row">
-          <span class="info-label">arXiv ID:</span>
-          <span class="info-value">{self._escape_html(paper.arxiv_id or 'N/A')}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">作者:</span>
-          <span class="info-value">{self._escape_html(paper.authors or 'Unknown')}</span>
-        </div>
-        {'<div class="info-row"><span class="info-label">单位/备注:</span><span class="info-value">' + self._escape_html(paper.affiliations) + '</span></div>' if paper.affiliations else ''}
-        <div class="info-row">
-          <span class="info-label">研究领域:</span>
-          <span class="info-value">{self._escape_html(', '.join(paper.categories) or 'Unspecified')}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">论文链接:</span>
-          <span class="info-value"><a href="{arxiv_link}" class="paper-link">{arxiv_link}</a></span>
-        </div>
+      <div class="core-info">
+        {'<div class="work-summary">💡 ' + self._escape_html(paper.summary or '正在生成工作内容摘要...') + '</div>' if paper.summary else ''}
+        {'<div class="research-field">📍 ' + self._escape_html(paper.research_field) + '</div>' if paper.research_field else ''}
       </div>
 
-      <div class="ai-summary">
-        <div class="summary-title">🤖 AI 详细摘要</div>
+      <details class="basic-info">
+        <summary class="info-header">
+          <span class="info-title">📋 基本信息</span>
+          <span class="toggle-hint">(点击展开/收起)</span>
+        </summary>
+        <div class="info-content">
+          <div class="info-row">
+            <span class="info-label">arXiv ID:</span>
+            <span class="info-value">{self._escape_html(paper.arxiv_id or 'N/A')}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">作者:</span>
+            <span class="info-value">{self._escape_html(paper.authors or 'Unknown')}</span>
+          </div>
+          {'<div class="info-row"><span class="info-label">单位/备注:</span><span class="info-value">' + self._escape_html(paper.affiliations) + '</span></div>' if paper.affiliations else ''}
+          <div class="info-row">
+            <span class="info-label">研究领域:</span>
+            <span class="info-value">{self._escape_html(', '.join(paper.categories) or 'Unspecified')}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">论文链接:</span>
+            <span class="info-value"><a href="{arxiv_link}" class="paper-link">{arxiv_link}</a></span>
+          </div>
+        </div>
+      </details>
+
+      <details class="ai-summary">
+        <summary class="summary-header">
+          <span class="summary-title">🤖 AI 详细摘要</span>
+          <span class="toggle-hint">(点击展开/收起)</span>
+        </summary>
         <div class="summary-content">
           {self._markdown_to_html(paper_summary)}
         </div>
-      </div>
+      </details>
     </div>
 """
 
@@ -128,21 +142,47 @@ class MailSender:
       .paper-card {{ background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; margin-bottom: 30px; overflow: hidden; transition: box-shadow 0.3s; }}
       .paper-card:hover {{ box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}
 
-      .paper-header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; color: white; }}
-      .paper-number {{ font-size: 14px; font-weight: 600; opacity: 0.9; margin-bottom: 8px; }}
-      .paper-title {{ font-size: 18px; font-weight: 600; line-height: 1.4; }}
+      .paper-header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; color: white; display: flex; align-items: center; gap: 12px; }}
+      .paper-number {{ font-size: 14px; font-weight: 600; opacity: 0.9; flex-shrink: 0; }}
+      .separator {{ font-size: 14px; opacity: 0.6; flex-shrink: 0; }}
+      .paper-title {{ font-size: 18px; font-weight: 600; line-height: 1.4; flex: 1; }}
 
-      .paper-info {{ padding: 20px; background: #f8f9fa; }}
-      .work-summary {{ background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2c3e50; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 15px; line-height: 1.6; font-weight: 500; border-left: 4px solid #667eea; }}
+      .core-info {{ padding: 20px; background: white; }}
+      .work-summary {{ background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2c3e50; padding: 15px; border-radius: 6px; margin-bottom: 12px; font-size: 15px; line-height: 1.6; font-weight: 500; border-left: 4px solid #667eea; }}
+      .research-field {{ background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2c3e50; padding: 15px; border-radius: 6px; font-size: 14px; line-height: 1.6; font-weight: 500; border-left: 4px solid #667eea; }}
+
+      .basic-info {{ padding: 0 20px 20px 20px; background: white; }}
+      .basic-info summary {{ list-style: none; }}
+      .basic-info summary::-webkit-details-marker {{ display: none; }}
+
+      .info-header {{ cursor: pointer; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none; transition: all 0.3s; }}
+      .info-header:hover {{ transform: translateY(-2px); box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4); }}
+
+      .info-title {{ font-size: 16px; font-weight: 600; }}
+
+      .basic-info[open] .info-header {{ border-radius: 6px 6px 0 0; }}
+
+      .info-content {{ padding: 20px; background: #f8f9fa; border-radius: 0 0 6px 6px; margin-top: -1px; }}
       .info-row {{ display: flex; margin-bottom: 10px; font-size: 14px; }}
+      .info-row:last-child {{ margin-bottom: 0; }}
       .info-label {{ font-weight: 600; color: #495057; min-width: 100px; flex-shrink: 0; }}
       .info-value {{ color: #212529; flex: 1; }}
       .paper-link {{ color: #667eea; text-decoration: none; font-weight: 500; }}
       .paper-link:hover {{ text-decoration: underline; }}
 
-      .ai-summary {{ padding: 25px; background: white; }}
-      .summary-title {{ font-size: 16px; font-weight: 600; color: #667eea; margin-bottom: 15px; display: flex; align-items: center; }}
-      .summary-content {{ color: #333; line-height: 1.8; }}
+      .ai-summary {{ padding: 20px; background: white; border-top: 1px solid #e1e4e8; }}
+      .ai-summary summary {{ list-style: none; }}
+      .ai-summary summary::-webkit-details-marker {{ display: none; }}
+
+      .summary-header {{ cursor: pointer; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none; transition: all 0.3s; }}
+      .summary-header:hover {{ transform: translateY(-2px); box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4); }}
+
+      .summary-title {{ font-size: 16px; font-weight: 600; }}
+      .toggle-hint {{ font-size: 12px; opacity: 0.9; font-weight: 400; }}
+
+      .ai-summary[open] .summary-header {{ border-radius: 6px 6px 0 0; }}
+
+      .summary-content {{ color: #333; line-height: 1.8; padding: 20px; background: #f8f9fa; border-radius: 0 0 6px 6px; margin-top: -1px; }}
       .summary-content p {{ margin: 12px 0; }}
       .summary-content strong {{ color: #1a1a1a; font-weight: 600; }}
       .summary-content h3 {{ display: none; }}

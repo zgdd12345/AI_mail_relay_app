@@ -40,8 +40,18 @@ def run_pipeline(settings: Settings) -> None:
         len(messages),
     )
 
+    # 如果没有找到相关邮件，直接返回不发送邮件
+    if not relevant_messages:
+        LOGGER.info("No relevant arXiv emails found, skipping email sending")
+        return
+
     papers = extract_papers(relevant_messages)
     LOGGER.info("Parsed %d total papers before filtering", len(papers))
+
+    # 如果没有解析出任何论文，直接返回不发送邮件
+    if not papers:
+        LOGGER.info("No papers parsed from emails, skipping email sending")
+        return
 
     filtered_papers = filter_papers(
         papers, settings.filtering.allowed_categories, settings.filtering.keyword_filters
@@ -49,14 +59,27 @@ def run_pipeline(settings: Settings) -> None:
 
     LOGGER.info("Retained %d AI-related papers after filtering", len(filtered_papers))
 
+    # 如果过滤后没有论文，直接返回不发送邮件
+    if not filtered_papers:
+        LOGGER.info("No AI-related papers after filtering, skipping email sending")
+        return
+
     unique_papers = deduplicate_papers(filtered_papers)
     LOGGER.info("Deduplicated papers down to %d unique entries", len(unique_papers))
 
+    # 如果去重后没有论文，直接返回不发送邮件
+    if not unique_papers:
+        LOGGER.info("No unique papers after deduplication, skipping email sending")
+        return
+
+    # 只有在有论文的情况下才生成摘要和发送邮件
     llm_client = LLMClient(settings.llm)
     summary = llm_client.summarize_papers(unique_papers)
 
     sender = MailSender(settings.outbox)
     sender.send_digest(summary, unique_papers)
+
+    LOGGER.info("Successfully sent digest email with %d papers", len(unique_papers))
 
 
 def extract_papers(messages: Iterable[EmailMessage]) -> List[ArxivPaper]:

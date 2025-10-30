@@ -82,6 +82,8 @@ vim .env
 
 **详细部署文档**: 请查看 [DEPLOY.md](DEPLOY.md)
 
+**服务器遇到问题？**: 快速查看 [QUICKSTART_SERVER.md](QUICKSTART_SERVER.md) 立即解决常见错误
+
 ### 定时任务
 
 程序支持通过 Cron 设置定时运行：
@@ -103,6 +105,30 @@ tail -f logs/cron.log
 # 查看所有运行记录
 ls -lt logs/run_*.log
 ```
+
+## 故障排查
+
+遇到问题？请按以下步骤操作：
+
+1. **运行诊断脚本** (服务器上):
+   ```bash
+   ./deploy/diagnose.sh
+   ```
+
+2. **查看详细日志**:
+   ```bash
+   tail -100 logs/cron.log
+   ```
+
+3. **查看故障排查文档**: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+
+### 常见问题速查
+
+| 问题 | 解决方案 |
+|------|---------|
+| 连接超时 | 检查云服务商安全组，允许出站到端口 993, 587 |
+| 认证失败 | Gmail 需要应用专用密码，访问 https://myaccount.google.com/apppasswords |
+| 没有邮件 | 正常情况，系统不会发送空邮件 |
 
 ## 开发调试
 - 日志等级可通过 `--log-level` 调整

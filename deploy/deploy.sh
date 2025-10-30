@@ -43,7 +43,6 @@ source venv/bin/activate
 echo "✓ 安装依赖包..."
 pip install --upgrade pip -q
 pip install -e . -q
-pip install -r requirements.txt -q
 echo "  依赖安装完成 ✓"
 echo ""
 
