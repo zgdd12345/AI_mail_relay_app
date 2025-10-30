@@ -1,0 +1,16 @@
+[project]
+name = "ai-mail-relay"
+version = "0.1.0"
+description = "Fetch arXiv AI emails, summarize with an LLM, and forward a digest."
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+ai-mail-relay = "ai_mail_relay.main:main"

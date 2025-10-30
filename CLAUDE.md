@@ -1,0 +1,116 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+AI Mail Relay is a Python application that fetches arXiv subscription emails from an IMAP mailbox, filters AI-related papers by category/keywords, generates summaries using various LLM providers (OpenAI, DeepSeek, Claude, Qwen, ByteDance), and forwards digest emails via SMTP.
+
+The application is designed for daily automated execution (e.g., via cron) to process arXiv daily digests.
+
+## Installation & Setup
+
+```bash
+# Install in editable mode
+pip install -e .
+
+# Install with dev dependencies
+pip install -e ".[dev]"
+```
+
+## Running the Application
+
+```bash
+# Standard execution
+ai-mail-relay
+
+# With debug logging
+ai-mail-relay --log-level DEBUG
+
+# Run as module (useful for development)
+python -m ai_mail_relay.main --log-level DEBUG
+```
+
+## Configuration
+
+All configuration is via environment variables or a `.env` file in the project root. The application will not start without valid IMAP, SMTP, and LLM credentials. See [config.py](src/ai_mail_relay/config.py) for all available settings and their defaults.
+
+Required environment variables:
+- `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD` (email fetching)
+- `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM_ADDRESS`, `MAIL_TO_ADDRESS` (email sending)
+- `LLM_API_KEY` (or `OPENAI_API_KEY` for backward compatibility)
+
+## Architecture
+
+The application follows a linear pipeline architecture orchestrated by [pipeline.py](src/ai_mail_relay/pipeline.py):
+
+1. **Mail Fetching** ([mail_fetcher.py](src/ai_mail_relay/mail_fetcher.py))
+   - Connects to IMAP server and fetches unread messages within date range
+   - Filters by sender (`MAIL_SENDER_FILTER`) and subject keywords (`MAIL_SUBJECT_KEYWORDS`)
+
+2. **Email Parsing** ([arxiv_parser.py](src/ai_mail_relay/arxiv_parser.py))
+   - Extracts paper metadata (title, authors, categories, abstract, links) from email body
+   - Uses regex to split entries by "Title:" markers and parse structured fields
+   - The `ArxivPaper` dataclass represents each paper
+
+3. **Filtering**
+   - Papers are filtered by category whitelist (`ARXIV_ALLOWED_CATEGORIES`) or keyword matching (`ARXIV_KEYWORDS`)
+   - Categories use arXiv taxonomy (e.g., cs.AI, cs.LG, cs.CV)
+   - Papers are deduplicated by normalized title
+
+4. **LLM Summarization** ([llm_client.py](src/ai_mail_relay/llm_client.py), [llm_providers.py](src/ai_mail_relay/llm_providers.py))
+   - Provider abstraction via `BaseLLMProvider` with concrete implementations per LLM service
+   - OpenAI-compatible providers (OpenAI, DeepSeek, Qwen, ByteDance) share `OpenAICompatibleProvider` base
+   - Anthropic/Claude uses its own Messages API adapter
+   - Each provider auto-adjusts endpoint URLs when default OpenAI endpoint is detected
+   - All providers use `httpx` for HTTP requests with configurable timeouts
+
+5. **Mail Sending** ([mail_sender.py](src/ai_mail_relay/mail_sender.py))
+   - Sends digest email with summary in body and full paper details as Markdown attachment
+   - Uses SMTP with optional STARTTLS
+
+### Configuration System
+
+[config.py](src/ai_mail_relay/config.py) uses frozen dataclasses for immutability:
+- `MailboxConfig`: IMAP settings and email filtering rules
+- `OutboxConfig`: SMTP settings and recipient addresses
+- `FilteringConfig`: arXiv category/keyword filters and date range
+- `LLMConfig`: LLM provider, model, API credentials, and request parameters
+- `Settings`: Top-level container with `validate()` for required field checks
+
+Environment variables are read via `os.getenv()` in field factories. Helper functions `_get_env_list()` and `_get_env_bool()` parse comma-separated lists and boolean values.
+
+### LLM Provider System
+
+The provider system uses a registry pattern in [llm_client.py](src/ai_mail_relay/llm_client.py:28-34):
+- `LLMClient` selects the provider class based on `LLM_PROVIDER` config
+- All providers implement `BaseLLMProvider.generate(prompt: str) -> str`
+- Provider-specific endpoint construction happens in `__init__`
+- Providers automatically swap default OpenAI endpoint to their own service URLs
+- Error handling via `LLMProviderError` for HTTP failures
+
+### Email Parsing Logic
+
+[arxiv_parser.py](src/ai_mail_relay/arxiv_parser.py) parsing strategy:
+- Split email body by regex `/^Title:\s/i` to isolate paper entries
+- For each entry, scan lines for field markers (Title:, Authors:, Categories:, Abstract:)
+- Abstract collection continues until blank line encountered
+- Category extraction via regex `/([a-z\-]+\.[A-Z0-9\-]+)/` for arXiv taxonomy format
+- Link extraction via generic URL regex
+
+## Development Notes
+
+- The codebase uses Python 3.10+ type hints extensively (PEP 604 union syntax `X | Y`)
+- All modules have `__all__` exports for clean public APIs
+- Logging is done via standard library `logging` with module-level loggers
+- No test suite currently exists (no `test_*.py` files found)
+- Entry point is registered in [pyproject.toml](pyproject.toml:16) as `ai-mail-relay`
+- Primary dependency is `httpx` for async-capable HTTP; no dependency on official OpenAI/Anthropic SDKs
+- The application is stateless: each run is independent, no database or persistent state
+
+## Common Pitfalls
+
+- **Provider endpoint configuration**: When adding support for a new provider or debugging API calls, note that providers auto-replace the OpenAI default endpoint. Check [llm_providers.py](src/ai_mail_relay/llm_providers.py) for endpoint construction logic.
+- **Email parsing fragility**: The arxiv parser expects specific "Title:", "Authors:", "Categories:", "Abstract:" markers in plain-text email body. HTML emails or format changes will break parsing.
+- **Configuration validation**: Settings validation only happens in [main.py](src/ai_mail_relay/main.py:36) after `Settings()` construction. Missing required env vars will cause `ValueError` at startup.
+- **Timezone handling**: Date filtering in [pipeline.py](src/ai_mail_relay/pipeline.py:102-118) uses UTC consistently. Email Date headers are converted to UTC for comparison.
