@@ -22,11 +22,11 @@ echo "运行脚本: $RUN_SCRIPT"
 echo ""
 
 # 默认运行时间（北京时间）
-DEFAULT_TIMES="11:00,12:00,13:00"
+DEFAULT_TIMES="09:00"
 
 echo "请设置定时运行时间（北京时间，24小时制）"
 echo "格式: HH:MM,HH:MM,HH:MM"
-echo "默认: $DEFAULT_TIMES (每天 11:00、12:00、13:00)"
+echo "默认: $DEFAULT_TIMES (每天 09:00 运行)"
 echo ""
 read -p "运行时间 [直接按 Enter 使用默认值]: " RUN_TIMES
 
