@@ -72,6 +72,15 @@ class OutboxConfig:
         default_factory=lambda: os.getenv("MAIL_FROM_ADDRESS", "")
     )
     to_address: str = field(default_factory=lambda: os.getenv("MAIL_TO_ADDRESS", ""))
+    smtp_timeout: int = field(
+        default_factory=lambda: int(os.getenv("SMTP_TIMEOUT", "30"))
+    )
+    smtp_retry_attempts: int = field(
+        default_factory=lambda: int(os.getenv("SMTP_RETRY_ATTEMPTS", "3"))
+    )
+    smtp_retry_base_delay: float = field(
+        default_factory=lambda: float(os.getenv("SMTP_RETRY_BASE_DELAY", "2.0"))
+    )
 
     def validate(self) -> None:
         required = {
@@ -86,6 +95,12 @@ class OutboxConfig:
             raise ValueError(
                 f"Missing required SMTP configuration: {', '.join(sorted(missing))}"
             )
+        if self.smtp_timeout <= 0:
+            raise ValueError("SMTP_TIMEOUT must be > 0")
+        if self.smtp_retry_attempts < 0:
+            raise ValueError("SMTP_RETRY_ATTEMPTS must be >= 0")
+        if self.smtp_retry_base_delay <= 0:
+            raise ValueError("SMTP_RETRY_BASE_DELAY must be > 0")
 
 
 @dataclass(frozen=True)

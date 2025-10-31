@@ -80,14 +80,19 @@ The application follows a linear pipeline architecture orchestrated by [pipeline
 
 5. **Mail Sending** ([mail_sender.py](src/ai_mail_relay/mail_sender.py))
    - Sends digest email with summary in body and full paper details as Markdown attachment
-   - Uses SMTP with optional STARTTLS
+   - Uses SMTP with optional STARTTLS or SMTP_SSL
+   - Implements timeout handling and automatic retry with exponential backoff
+   - Configurable via `SMTP_TIMEOUT`, `SMTP_RETRY_ATTEMPTS`, `SMTP_RETRY_BASE_DELAY`
 
 ### Configuration System
 
 [config.py](src/ai_mail_relay/config.py) uses frozen dataclasses for immutability:
 - `ArxivConfig`: Fetching mode ("api" or "email") and API-specific settings (NEW)
 - `MailboxConfig`: IMAP settings and email filtering rules (only validated in email mode)
-- `OutboxConfig`: SMTP settings and recipient addresses
+- `OutboxConfig`: SMTP settings, recipient addresses, and connection parameters
+  - `smtp_timeout`: Connection timeout in seconds (default: 30)
+  - `smtp_retry_attempts`: Number of retry attempts on failure (default: 3)
+  - `smtp_retry_base_delay`: Base delay in seconds for exponential backoff (default: 2.0)
 - `FilteringConfig`: arXiv category/keyword filters and date range
 - `LLMConfig`: LLM provider, model, API credentials, and request parameters
 - `Settings`: Top-level container with `validate()` for required field checks
@@ -144,3 +149,30 @@ The provider system uses a registry pattern in [llm_client.py](src/ai_mail_relay
 - **Email parsing fragility**: The arxiv parser expects specific "Title:", "Authors:", "Categories:", "Abstract:" markers in plain-text email body. HTML emails or format changes will break parsing.
 - **Configuration validation**: Settings validation only happens in [main.py](src/ai_mail_relay/main.py:36) after `Settings()` construction. Missing required env vars will cause `ValueError` at startup.
 - **Timezone handling**: Date filtering in [pipeline.py](src/ai_mail_relay/pipeline.py:102-118) uses UTC consistently. Email Date headers are converted to UTC for comparison.
+- **SMTP connection issues**: Network connectivity problems (firewalls, blocked ports) are common on cloud servers. See troubleshooting section below.
+
+## Troubleshooting
+
+For comprehensive troubleshooting guidance, see the **[Troubleshooting Guide](docs/troubleshooting.md)**.
+
+### Quick Reference
+
+**SMTP Connection Issues:**
+- Run diagnostic: `./deploy/diagnose.sh`
+- Check security groups for outbound port 587/465
+- Try alternative port 465: `SMTP_PORT=465`, `SMTP_USE_TLS=false`
+- Use app-specific password for Gmail: https://myaccount.google.com/apppasswords
+
+**Timeout and Retry Configuration:**
+```bash
+SMTP_TIMEOUT=30              # Connection timeout (seconds)
+SMTP_RETRY_ATTEMPTS=3        # Number of retries
+SMTP_RETRY_BASE_DELAY=2.0    # Base delay for exponential backoff
+```
+
+**Debug Logging:**
+```bash
+ai-mail-relay --log-level DEBUG
+```
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for detailed diagnostic procedures and solutions.

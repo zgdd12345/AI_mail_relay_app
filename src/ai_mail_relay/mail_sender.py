@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import re
 import smtplib
+import socket
+import time
 from email.message import EmailMessage
 from typing import List
 
@@ -55,15 +57,78 @@ class MailSender:
         self._send(message)
 
     def _send(self, message: EmailMessage) -> None:
-        if self._config.use_tls:
-            with smtplib.SMTP(self._config.smtp_host, self._config.smtp_port) as smtp:
-                smtp.starttls()
-                smtp.login(self._config.smtp_user, self._config.smtp_password)
-                smtp.send_message(message)
-        else:
-            with smtplib.SMTP_SSL(self._config.smtp_host, self._config.smtp_port) as smtp:
-                smtp.login(self._config.smtp_user, self._config.smtp_password)
-                smtp.send_message(message)
+        """Send email with retry logic and timeout handling."""
+        last_exception = None
+
+        for attempt in range(self._config.smtp_retry_attempts + 1):
+            try:
+                if self._config.use_tls:
+                    with smtplib.SMTP(
+                        self._config.smtp_host,
+                        self._config.smtp_port,
+                        timeout=self._config.smtp_timeout
+                    ) as smtp:
+                        smtp.starttls()
+                        smtp.login(self._config.smtp_user, self._config.smtp_password)
+                        smtp.send_message(message)
+                else:
+                    with smtplib.SMTP_SSL(
+                        self._config.smtp_host,
+                        self._config.smtp_port,
+                        timeout=self._config.smtp_timeout
+                    ) as smtp:
+                        smtp.login(self._config.smtp_user, self._config.smtp_password)
+                        smtp.send_message(message)
+
+                # Success - log and return
+                if attempt > 0:
+                    LOGGER.info("Email sent successfully after %d retry attempts", attempt)
+                else:
+                    LOGGER.info("Email sent successfully")
+                return
+
+            except (socket.timeout, TimeoutError) as e:
+                last_exception = e
+                LOGGER.warning(
+                    "SMTP connection timeout (attempt %d/%d): %s",
+                    attempt + 1,
+                    self._config.smtp_retry_attempts + 1,
+                    str(e)
+                )
+            except smtplib.SMTPAuthenticationError as e:
+                # Don't retry authentication errors
+                LOGGER.error("SMTP authentication failed: %s", str(e))
+                raise
+            except smtplib.SMTPException as e:
+                last_exception = e
+                LOGGER.warning(
+                    "SMTP error (attempt %d/%d): %s",
+                    attempt + 1,
+                    self._config.smtp_retry_attempts + 1,
+                    str(e)
+                )
+            except OSError as e:
+                last_exception = e
+                LOGGER.warning(
+                    "Network error (attempt %d/%d): %s",
+                    attempt + 1,
+                    self._config.smtp_retry_attempts + 1,
+                    str(e)
+                )
+
+            # Don't sleep after the last attempt
+            if attempt < self._config.smtp_retry_attempts:
+                delay = self._config.smtp_retry_base_delay * (2 ** attempt)
+                LOGGER.info("Retrying in %.1f seconds...", delay)
+                time.sleep(delay)
+
+        # All retries exhausted
+        LOGGER.error(
+            "Failed to send email after %d attempts. Last error: %s",
+            self._config.smtp_retry_attempts + 1,
+            str(last_exception)
+        )
+        raise last_exception
 
     def _build_body_with_papers(self, summary_md: str, papers: List[ArxivPaper]) -> str:
         """Build HTML email body with paper info and AI summaries integrated."""

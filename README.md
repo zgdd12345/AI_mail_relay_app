@@ -4,8 +4,13 @@
 
 ## 📚 文档导航
 
+### 用户文档
 - **[README.md](README.md)** - 项目介绍、安装、基本使用（本文档）
-- **[DEPLOY.md](DEPLOY.md)** - 服务器部署指南、定时任务、故障排查
+- **[DEPLOY.md](DEPLOY.md)** - 服务器部署指南、定时任务
+- **[配置参考](docs/configuration.md)** - 所有配置选项的详细说明
+- **[故障排查指南](docs/troubleshooting.md)** - 常见问题诊断和解决方案
+
+### 开发者文档
 - **[CLAUDE.md](CLAUDE.md)** - 项目架构、技术细节、开发指南
 - **[CHANGELOG.md](CHANGELOG.md)** - 版本更新历史
 
@@ -30,47 +35,64 @@ pip install -e .
 ```
 
 ## 配置方式
-通过环境变量或 `.env` 文件提供以下配置：
 
-| 变量 | 说明 | 默认值 |
+通过环境变量或 `.env` 文件提供配置。以下为主要配置项，**完整配置说明请查看 [配置参考文档](docs/configuration.md)**。
+
+### 必需配置
+
+```bash
+# arXiv 获取模式
+ARXIV_FETCH_MODE=api  # 推荐使用 API 模式
+
+# SMTP 发送配置
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-specific-password  # Gmail 需要应用专用密码
+SMTP_USE_TLS=true
+MAIL_FROM_ADDRESS=your-email@gmail.com
+MAIL_TO_ADDRESS=your-email@gmail.com
+
+# LLM 配置
+LLM_PROVIDER=openai
+LLM_API_KEY=sk-proj-xxxxxxxxxxxxx
+LLM_MODEL=gpt-4o-mini
+```
+
+### 新增配置（v1.1+）
+
+```bash
+# SMTP 超时和重试配置
+SMTP_TIMEOUT=30              # 连接超时（秒），默认 30
+SMTP_RETRY_ATTEMPTS=3        # 重试次数，默认 3
+SMTP_RETRY_BASE_DELAY=2.0    # 基础延迟（秒），默认 2.0
+```
+
+### 主要配置项
+
+| 配置项 | 说明 | 默认值 |
 | --- | --- | --- |
+| **arXiv 获取** |
 | `ARXIV_FETCH_MODE` | 获取模式（`api` 推荐 / `email`） | `api` |
 | `ARXIV_API_MAX_RESULTS` | API 模式下最大获取论文数 | `200` |
-| `IMAP_HOST` | IMAP 服务器地址（仅 email 模式需要） |  |
-| `IMAP_PORT` | IMAP 端口 | `993` |
-| `IMAP_USER` | IMAP 用户名（仅 email 模式需要） |  |
-| `IMAP_PASSWORD` | IMAP 密码 / 授权码（仅 email 模式需要） |  |
-| `IMAP_FOLDER` | 读取的邮箱目录 | `INBOX` |
-| `MAIL_SENDER_FILTER` | 发件人过滤（仅 email 模式） | `no-reply@arxiv.org` |
-| `MAIL_SUBJECT_KEYWORDS` | 主题关键词，逗号分隔（仅 email 模式） | `arXiv,Daily,digest` |
-| `SMTP_HOST` | SMTP 服务器地址 |  |
+| `ARXIV_ALLOWED_CATEGORIES` | AI 类别白名单（逗号分隔） | `cs.AI,cs.LG,cs.CV,...` |
+| **SMTP 发送** |
+| `SMTP_HOST` | SMTP 服务器地址 | 必需 |
 | `SMTP_PORT` | SMTP 端口 | `587` |
-| `SMTP_USER` | SMTP 用户名 |  |
-| `SMTP_PASSWORD` | SMTP 密码 / 授权码 |  |
+| `SMTP_USER` | SMTP 用户名 | 必需 |
+| `SMTP_PASSWORD` | SMTP 密码 / 授权码 | 必需 |
 | `SMTP_USE_TLS` | 是否使用 STARTTLS | `true` |
-| `MAIL_FROM_ADDRESS` | 转发邮件 From |  |
-| `MAIL_TO_ADDRESS` | 转发目标邮箱 |  |
-| `LLM_PROVIDER` | 大模型提供商（`openai`/`deepseek`/`claude`/`anthropic`/`qwen`/`bytedance`） | `openai` |
-| `LLM_API_KEY` | LLM API Key（兼容 `OPENAI_API_KEY`） |  |
-| `LLM_MODEL` | 模型名称（兼容 `OPENAI_MODEL`） | `gpt-4o-mini` |
-| `LLM_BASE_URL` | 接口地址（兼容 `OPENAI_BASE_URL`） | `https://api.openai.com` |
-| `SUMMARY_MAX_TOKENS` | 摘要最大 tokens | `1024` |
-| `ARXIV_ALLOWED_CATEGORIES` | AI 类别白名单 | `cs.AI,cs.LG,cs.CV,cs.CL,cs.RO,cs.IR,stat.ML,eess.AS` |
-| `ARXIV_KEYWORDS` | 关键字过滤（备用） | `artificial intelligence,machine learning,deep learning` |
-| `ARXIV_MAX_DAYS_BACK` | 回溯天数（含当天） | `1` |
-| `LLM_REQUEST_TIMEOUT` | LLM 请求超时（秒） | `60` |
-| `ANTHROPIC_VERSION` | Claude 接口版本（Anthropic 专用） | `2023-06-01` |
-| `LLM_MAX_CONCURRENT` | LLM 并发线程数 | `4` |
-| `LLM_RATE_LIMIT_RPM` | 每分钟最大请求数（0 表示不限制） | `20` |
-| `LLM_RETRY_ON_RATE_LIMIT` | 命中限流时是否重试 | `true` |
-| `LLM_RETRY_ATTEMPTS` | 限流重试次数 | `3` |
-| `LLM_RETRY_BASE_DELAY` | 限流退避初始等待（秒） | `1.0` |
+| `SMTP_TIMEOUT` | 连接超时（秒）⭐ NEW | `30` |
+| `SMTP_RETRY_ATTEMPTS` | 重试次数 ⭐ NEW | `3` |
+| `SMTP_RETRY_BASE_DELAY` | 重试延迟（秒）⭐ NEW | `2.0` |
+| **LLM 配置** |
+| `LLM_PROVIDER` | 提供商（`openai`/`deepseek`/`claude`/`qwen`/`bytedance`） | `openai` |
+| `LLM_API_KEY` | LLM API Key | 必需 |
+| `LLM_MODEL` | 模型名称 | `gpt-4o-mini` |
+| `LLM_MAX_CONCURRENT` | 并发线程数 | `4` |
+| `LLM_RATE_LIMIT_RPM` | 每分钟最大请求数 | `20` |
 
-> **提示**：  
-> - DeepSeek 默认自动切换为 `https://api.deepseek.com/v1/chat/completions`  
-> - 阿里千问默认使用 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`  
-> - 字节火山豆包默认使用 `https://ark.cn-beijing.volces.com/api/v3/chat/completions`  
-> - 也可通过自定义 `LLM_BASE_URL` 指向私有代理或其他兼容接口
+📖 **完整配置列表**: 查看 [配置参考文档](docs/configuration.md)
 
 ## 使用说明
 ```bash
@@ -185,25 +207,34 @@ ls -lt logs/run_*.log
 
 遇到问题？请按以下步骤操作：
 
-1. **运行诊断脚本** (服务器上):
+### 快速诊断
+
+1. **运行诊断脚本**（服务器上）:
    ```bash
    ./deploy/diagnose.sh
    ```
 
 2. **查看详细日志**:
    ```bash
+   # 查看最新日志
    tail -100 logs/cron.log
+
+   # 启用调试模式
+   ai-mail-relay --log-level DEBUG
    ```
 
-3. **查看部署文档中的故障排查章节**: [DEPLOY.md](DEPLOY.md)
+3. **查看完整故障排查文档**: 📖 [故障排查指南](docs/troubleshooting.md)
 
 ### 常见问题速查
 
-| 问题 | 解决方案 |
-|------|---------|
-| 连接超时 | 检查云服务商安全组，允许出站到端口 993, 587 |
-| 认证失败 | Gmail 需要应用专用密码，访问 https://myaccount.google.com/apppasswords |
-| 没有邮件 | 正常情况，系统不会发送空邮件 |
+| 问题 | 原因 | 解决方案 |
+|------|------|---------|
+| **SMTP 连接超时** | 云服务器防火墙封锁端口 | 1. 检查安全组出站规则<br>2. 运行 `./deploy/diagnose.sh`<br>3. 尝试端口 465 |
+| **认证失败** | 未使用应用专用密码 | Gmail 用户需在 https://myaccount.google.com/apppasswords 生成应用密码 |
+| **未收到邮件** | 可能无符合条件的论文 | 正常情况，检查 `ARXIV_ALLOWED_CATEGORIES` 配置 |
+| **LLM API 失败** | API Key 错误或超限 | 检查 `LLM_API_KEY` 和账户额度 |
+
+📖 **详细故障排查**: [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ## 开发调试
 
