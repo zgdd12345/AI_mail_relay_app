@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import asyncio
 
 from dotenv import load_dotenv
 
@@ -44,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        run_pipeline(settings)
+        asyncio.run(run_pipeline(settings))
     except Exception:  # pragma: no cover - top-level guard
         logging.exception("Failed to complete mail relay run")
         return 1
@@ -55,4 +56,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())
-

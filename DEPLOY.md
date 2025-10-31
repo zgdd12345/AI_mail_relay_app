@@ -7,10 +7,15 @@
 ### 系统要求
 - **操作系统**: Linux / macOS
 - **Python 版本**: 3.10 或更高
-- **网络**: 能够访问 IMAP/SMTP 服务器和 LLM API
+- **网络**: 能够访问 arXiv API、SMTP 服务器和 LLM API
 
-### 必需信息
-1. **邮箱账号**: 用于接收 arXiv 邮件的 IMAP 账号
+### 必需信息（API 模式 - 推荐）
+1. **SMTP 账号**: 用于发送摘要邮件
+2. **LLM API Key**: DeepSeek / OpenAI / Claude 等任一 API 密钥
+3. **网络访问**: 确保可以访问 `https://export.arxiv.org`
+
+### 必需信息（邮箱模式 - 可选）
+1. **IMAP 账号**: 用于接收 arXiv 邮件
 2. **SMTP 账号**: 用于发送摘要邮件（可与 IMAP 相同）
 3. **LLM API Key**: DeepSeek / OpenAI / Claude 等任一 API 密钥
 
@@ -59,8 +64,35 @@ cd /path/to/AI_mail_relay_app
 vim .env  # 或使用 nano .env
 ```
 
-**必须配置的项目**：
+**API 模式配置（推荐）**：
 ```env
+# arXiv 获取模式
+ARXIV_FETCH_MODE=api  # 使用 API 模式，无需 IMAP
+
+# SMTP 配置（用于发送邮件）
+SMTP_HOST=smtp.gmail.com
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+
+# 邮件地址
+MAIL_FROM_ADDRESS=your_email@gmail.com
+MAIL_TO_ADDRESS=your_email@gmail.com
+
+# LLM 配置
+LLM_PROVIDER=deepseek
+LLM_API_KEY=your_api_key_here
+LLM_MODEL=deepseek-chat
+
+# API 模式设置
+ARXIV_API_MAX_RESULTS=200
+ARXIV_MAX_DAYS_BACK=2
+```
+
+**邮箱模式配置（可选）**：
+```env
+# arXiv 获取模式
+ARXIV_FETCH_MODE=email  # 使用邮箱模式
+
 # IMAP 配置
 IMAP_HOST=imap.gmail.com
 IMAP_USER=your_email@gmail.com
@@ -81,11 +113,17 @@ LLM_API_KEY=your_api_key_here
 LLM_MODEL=deepseek-chat
 ```
 
-保存后测试运行：
+保存后验证配置：
 
 ```bash
+# API 模式验证（推荐）
+./deploy/verify_api_mode.sh
+
+# 或运行完整测试
 ./deploy/run.sh
 ```
+
+如果验证通过，可以进入下一步设置定时任务。
 
 ---
 
@@ -388,17 +426,78 @@ sudo systemctl start ai-mail-relay.timer
 
 ---
 
+## 🔧 API 模式故障排查
+
+### 网络连接问题
+
+如果遇到"Failed to fetch from arXiv API"错误：
+
+1. **检查 arXiv API 连接**：
+   ```bash
+   curl -v https://export.arxiv.org/api/query?search_query=cat:cs.AI\&max_results=1
+   ```
+
+2. **检查防火墙设置**：
+   ```bash
+   # 确保允许出站 HTTPS 连接
+   sudo iptables -L -n | grep 443
+   ```
+
+3. **运行验证脚本**：
+   ```bash
+   ./deploy/verify_api_mode.sh
+   ```
+
+### 代理设置
+
+如果服务器需要通过代理访问外网：
+
+```bash
+# 在 .env 中添加
+export HTTP_PROXY=http://proxy.example.com:8080
+export HTTPS_PROXY=http://proxy.example.com:8080
+```
+
+### 健康检查
+
+定期运行健康检查：
+
+```bash
+./deploy/health_check.sh
+```
+
+或添加到 cron：
+
+```bash
+# 每小时检查一次
+0 * * * * cd /path/to/AI_mail_relay_app && ./deploy/health_check.sh
+```
+
+---
+
 ## ✅ 部署检查清单
 
+### API 模式（推荐）
 - [ ] Python 3.10+ 已安装
 - [ ] 运行 `./deploy/deploy.sh` 成功
-- [ ] `.env` 文件已正确配置
+- [ ] `.env` 文件已正确配置（`ARXIV_FETCH_MODE=api`）
+- [ ] 运行 `./deploy/verify_api_mode.sh` 通过
 - [ ] 手动运行 `./deploy/run.sh` 成功
 - [ ] 收到测试邮件
 - [ ] Cron 任务已设置
+- [ ] 可以访问 `https://export.arxiv.org`
 - [ ] 日志目录可写
+
+### 邮箱模式
+- [ ] Python 3.10+ 已安装
+- [ ] 运行 `./deploy/deploy.sh` 成功
+- [ ] `.env` 文件已正确配置（`ARXIV_FETCH_MODE=email`）
+- [ ] IMAP 凭据正确
+- [ ] 手动运行 `./deploy/run.sh` 成功
+- [ ] 收到测试邮件
+- [ ] Cron 任务已设置
 - [ ] 系统时区为北京时间
 
 ---
 
-**部署完成！程序将在每天 11:00、12:00、13:00（北京时间）自动运行。** 🎉
+**部署完成！程序将在每天自动运行，获取最新 arXiv 论文并发送摘要。** 🎉

@@ -39,15 +39,24 @@ echo "$OUTPUT" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 echo "========================================" | tee -a "$LOG_FILE"
 
+# 检测运行模式
+MODE="未知"
+if echo "$OUTPUT" | grep -q "Using arXiv API mode"; then
+    MODE="API"
+elif echo "$OUTPUT" | grep -q "Using email mode"; then
+    MODE="邮箱"
+fi
+
 # 分析运行结果
 if [ $EXIT_CODE -eq 0 ]; then
     # 检查是否跳过了邮件发送
     if echo "$OUTPUT" | grep -q "skipping email sending"; then
         echo "状态: 成功 (无需发送邮件)" | tee -a "$LOG_FILE"
+        echo "模式: $MODE" | tee -a "$LOG_FILE"
         if echo "$OUTPUT" | grep -q "No relevant arXiv emails found"; then
             echo "原因: 未找到相关 arXiv 邮件" | tee -a "$LOG_FILE"
-        elif echo "$OUTPUT" | grep -q "No papers parsed"; then
-            echo "原因: 邮件解析失败，未找到论文" | tee -a "$LOG_FILE"
+        elif echo "$OUTPUT" | grep -q "No papers found\|No papers parsed"; then
+            echo "原因: 未找到或解析论文" | tee -a "$LOG_FILE"
         elif echo "$OUTPUT" | grep -q "No AI-related papers"; then
             echo "原因: 过滤后没有 AI 相关论文" | tee -a "$LOG_FILE"
         elif echo "$OUTPUT" | grep -q "No unique papers"; then
@@ -56,14 +65,21 @@ if [ $EXIT_CODE -eq 0 ]; then
     elif echo "$OUTPUT" | grep -q "Successfully sent digest email"; then
         PAPER_COUNT=$(echo "$OUTPUT" | grep "Successfully sent digest email" | grep -oP '\d+(?= papers)' || echo "未知")
         echo "状态: 成功 (已发送 $PAPER_COUNT 篇论文摘要)" | tee -a "$LOG_FILE"
+        echo "模式: $MODE" | tee -a "$LOG_FILE"
     else
         echo "状态: 成功" | tee -a "$LOG_FILE"
+        echo "模式: $MODE" | tee -a "$LOG_FILE"
     fi
 else
     # 检查具体错误类型
     echo "状态: 失败 (退出代码: $EXIT_CODE)" | tee -a "$LOG_FILE"
+    echo "模式: $MODE" | tee -a "$LOG_FILE"
 
-    if echo "$OUTPUT" | grep -q "Connection timed out\|TimeoutError"; then
+    if echo "$OUTPUT" | grep -q "Failed to fetch from arXiv API"; then
+        echo "错误类型: arXiv API 访问失败" | tee -a "$LOG_FILE"
+        echo "建议: 检查网络连接和防火墙设置" | tee -a "$LOG_FILE"
+        echo "运行验证: ./deploy/verify_api_mode.sh" | tee -a "$LOG_FILE"
+    elif echo "$OUTPUT" | grep -q "Connection timed out\|TimeoutError"; then
         echo "错误类型: 网络连接超时" | tee -a "$LOG_FILE"
         echo "建议: 检查防火墙和网络连接" | tee -a "$LOG_FILE"
         echo "运行诊断: ./deploy/diagnose.sh" | tee -a "$LOG_FILE"

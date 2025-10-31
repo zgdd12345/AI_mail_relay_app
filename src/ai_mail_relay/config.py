@@ -117,6 +117,27 @@ class FilteringConfig:
 
 
 @dataclass(frozen=True)
+class ArxivConfig:
+    """Configuration for arXiv data fetching mode."""
+
+    fetch_mode: str = field(
+        default_factory=lambda: os.getenv("ARXIV_FETCH_MODE", "api")
+    )
+    api_max_results: int = field(
+        default_factory=lambda: int(os.getenv("ARXIV_API_MAX_RESULTS", "200"))
+    )
+
+    def validate(self) -> None:
+        if self.fetch_mode not in {"email", "api"}:
+            raise ValueError(
+                f"Invalid ARXIV_FETCH_MODE '{self.fetch_mode}'. "
+                "Valid options: email, api"
+            )
+        if self.api_max_results < 1:
+            raise ValueError("ARXIV_API_MAX_RESULTS must be >= 1")
+
+
+@dataclass(frozen=True)
 class LLMConfig:
     provider: str = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "openai"))
     api_key: str = field(
@@ -142,6 +163,23 @@ class LLMConfig:
     anthropic_version: str = field(
         default_factory=lambda: os.getenv("ANTHROPIC_VERSION", "2023-06-01")
     )
+    # 并发控制配置
+    max_concurrent_requests: int = field(
+        default_factory=lambda: int(os.getenv("LLM_MAX_CONCURRENT", "4"))
+    )
+    rate_limit_rpm: int = field(
+        default_factory=lambda: int(os.getenv("LLM_RATE_LIMIT_RPM", "20"))
+    )
+    retry_on_rate_limit: bool = field(
+        default_factory=lambda: os.getenv("LLM_RETRY_ON_RATE_LIMIT", "true").lower()
+        in {"1", "true", "yes", "on"}
+    )
+    retry_attempts: int = field(
+        default_factory=lambda: int(os.getenv("LLM_RETRY_ATTEMPTS", "3"))
+    )
+    retry_base_delay: float = field(
+        default_factory=lambda: float(os.getenv("LLM_RETRY_BASE_DELAY", "1.0"))
+    )
 
     def validate(self) -> None:
         if not self.api_key:
@@ -152,6 +190,14 @@ class LLMConfig:
                 f"Unsupported LLM provider '{self.provider}'. "
                 "Valid options: openai, deepseek, claude, anthropic, qwen, bytedance."
             )
+        if self.max_concurrent_requests < 1:
+            raise ValueError("LLM_MAX_CONCURRENT must be >= 1.")
+        if self.rate_limit_rpm < 0:
+            raise ValueError("LLM_RATE_LIMIT_RPM must be >= 0.")
+        if self.retry_attempts < 0:
+            raise ValueError("LLM_RETRY_ATTEMPTS must be >= 0.")
+        if self.retry_base_delay <= 0:
+            raise ValueError("LLM_RETRY_BASE_DELAY must be > 0.")
 
 
 @dataclass(frozen=True)
@@ -160,11 +206,15 @@ class Settings:
     outbox: OutboxConfig = field(default_factory=OutboxConfig)
     filtering: FilteringConfig = field(default_factory=FilteringConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    arxiv: ArxivConfig = field(default_factory=ArxivConfig)
 
     def validate(self) -> None:
-        self.mailbox.validate()
+        # Only validate mailbox config if using email mode
+        if self.arxiv.fetch_mode == "email":
+            self.mailbox.validate()
         self.outbox.validate()
         self.llm.validate()
+        self.arxiv.validate()
 
 
 def today_string() -> str:
@@ -177,6 +227,7 @@ __all__ = [
     "OutboxConfig",
     "FilteringConfig",
     "LLMConfig",
+    "ArxivConfig",
     "Settings",
     "today_string",
 ]

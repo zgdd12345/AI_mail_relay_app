@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import OrderedDict
 from datetime import UTC, date, datetime, timedelta
@@ -19,33 +20,16 @@ from .mail_sender import MailSender
 LOGGER = logging.getLogger(__name__)
 
 
-def run_pipeline(settings: Settings) -> None:
-    """Fetch unread arXiv emails, summarize, and forward the digest."""
-    target_date = datetime.now(UTC).date()
-    oldest_date = target_date - timedelta(days=settings.filtering.max_days_back - 1)
+async def run_pipeline(settings: Settings) -> None:
+    """Fetch arXiv papers (via email or API), summarize, and forward the digest."""
+    # Choose fetching mode based on configuration
+    if settings.arxiv.fetch_mode == "api":
+        LOGGER.info("Using arXiv API mode to fetch papers")
+        papers = fetch_from_api(settings)
+    else:
+        LOGGER.info("Using email mode to fetch papers")
+        papers = fetch_from_email(settings)
 
-    fetcher = MailFetcher(settings.mailbox)
-    messages = fetcher.fetch_unread_messages(since=oldest_date)
-
-    relevant_messages = [
-        message
-        for message in messages
-        if message_is_relevant(message, settings.mailbox.subject_keywords)
-        and message_is_from_today(message, target_date, settings.filtering.max_days_back)
-    ]
-
-    LOGGER.info(
-        "Identified %d relevant arXiv emails (out of %d fetched)",
-        len(relevant_messages),
-        len(messages),
-    )
-
-    # 如果没有找到相关邮件，直接返回不发送邮件
-    if not relevant_messages:
-        LOGGER.info("No relevant arXiv emails found, skipping email sending")
-        return
-
-    papers = extract_papers(relevant_messages)
     LOGGER.info("Parsed %d total papers before filtering", len(papers))
 
     # 如果没有解析出任何论文，直接返回不发送邮件
@@ -74,12 +58,55 @@ def run_pipeline(settings: Settings) -> None:
 
     # 只有在有论文的情况下才生成摘要和发送邮件
     llm_client = LLMClient(settings.llm)
-    summary = llm_client.summarize_papers(unique_papers)
+    summary = await llm_client.summarize_papers(unique_papers)
 
     sender = MailSender(settings.outbox)
     sender.send_digest(summary, unique_papers)
 
     LOGGER.info("Successfully sent digest email with %d papers", len(unique_papers))
+
+
+def fetch_from_api(settings: Settings) -> List[ArxivPaper]:
+    """Fetch papers directly from arXiv API."""
+    from .arxiv_fetcher import ArxivAPIFetcher
+
+    fetcher = ArxivAPIFetcher(
+        allowed_categories=settings.filtering.allowed_categories,
+        max_days_back=settings.filtering.max_days_back,
+    )
+    papers = fetcher.fetch_papers(max_results=settings.arxiv.api_max_results)
+
+    LOGGER.info("Fetched %d papers from arXiv API", len(papers))
+    return papers
+
+
+def fetch_from_email(settings: Settings) -> List[ArxivPaper]:
+    """Fetch papers from email (original implementation)."""
+    target_date = datetime.now(UTC).date()
+    oldest_date = target_date - timedelta(days=settings.filtering.max_days_back - 1)
+
+    fetcher = MailFetcher(settings.mailbox)
+    messages = fetcher.fetch_unread_messages(since=oldest_date)
+
+    relevant_messages = [
+        message
+        for message in messages
+        if message_is_relevant(message, settings.mailbox.subject_keywords)
+        and message_is_from_today(message, target_date, settings.filtering.max_days_back)
+    ]
+
+    LOGGER.info(
+        "Identified %d relevant arXiv emails (out of %d fetched)",
+        len(relevant_messages),
+        len(messages),
+    )
+
+    if not relevant_messages:
+        LOGGER.info("No relevant arXiv emails found")
+        return []
+
+    papers = extract_papers(relevant_messages)
+    return papers
 
 
 def extract_papers(messages: Iterable[EmailMessage]) -> List[ArxivPaper]:

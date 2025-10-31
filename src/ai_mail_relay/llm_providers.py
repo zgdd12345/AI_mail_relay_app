@@ -18,6 +18,10 @@ LOGGER = logging.getLogger(__name__)
 class LLMProviderError(RuntimeError):
     """Raised when an LLM provider call fails."""
 
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class BaseLLMProvider(abc.ABC):
     """Abstract base class for provider-specific adapters."""
@@ -35,6 +39,9 @@ class BaseLLMProvider(abc.ABC):
             response = httpx.post(url, headers=headers, json=payload, timeout=self._timeout)
             response.raise_for_status()
             return response.json()
+        except httpx.HTTPStatusError as exc:  # pragma: no cover - network failure path
+            status = exc.response.status_code if exc.response else None
+            raise LLMProviderError(f"LLM request failed: {exc}", status_code=status) from exc
         except httpx.HTTPError as exc:  # pragma: no cover - network failure path
             raise LLMProviderError(f"LLM request failed: {exc}") from exc
 
@@ -167,3 +174,4 @@ __all__ = [
     "OpenAIProvider",
     "QwenProvider",
 ]
+

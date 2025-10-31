@@ -33,25 +33,38 @@ python -m ai_mail_relay.main --log-level DEBUG
 
 ## Configuration
 
-All configuration is via environment variables or a `.env` file in the project root. The application will not start without valid IMAP, SMTP, and LLM credentials. See [config.py](src/ai_mail_relay/config.py) for all available settings and their defaults.
+All configuration is via environment variables or a `.env` file in the project root. See [config.py](src/ai_mail_relay/config.py) for all available settings and their defaults.
 
 Required environment variables:
-- `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD` (email fetching)
-- `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM_ADDRESS`, `MAIL_TO_ADDRESS` (email sending)
+- `ARXIV_FETCH_MODE`: "api" (default, recommended) or "email"
+- API mode: No IMAP credentials required
+- Email mode: `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD`
+- Both modes: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM_ADDRESS`, `MAIL_TO_ADDRESS` (email sending)
 - `LLM_API_KEY` (or `OPENAI_API_KEY` for backward compatibility)
 
 ## Architecture
 
 The application follows a linear pipeline architecture orchestrated by [pipeline.py](src/ai_mail_relay/pipeline.py):
 
-1. **Mail Fetching** ([mail_fetcher.py](src/ai_mail_relay/mail_fetcher.py))
-   - Connects to IMAP server and fetches unread messages within date range
-   - Filters by sender (`MAIL_SENDER_FILTER`) and subject keywords (`MAIL_SUBJECT_KEYWORDS`)
+1. **Paper Fetching** (dual-mode support)
+   - **API Mode** ([arxiv_fetcher.py](src/ai_mail_relay/arxiv_fetcher.py)) - Default, recommended
+     - Fetches papers directly from arXiv API (`https://export.arxiv.org/api/query`)
+     - **Default behavior: fetches yesterday's papers** (matches arXiv announcement schedule)
+     - Queries by category with configurable max results (`ARXIV_API_MAX_RESULTS`)
+     - Parses XML response using `xml.etree.ElementTree`
+     - Respects arXiv rate limit (3-second delay between requests)
+     - Filters papers by publication date locally
+     - Returns `List[ArxivPaper]` directly
+   - **Email Mode** ([mail_fetcher.py](src/ai_mail_relay/mail_fetcher.py)) - Legacy
+     - Connects to IMAP server and fetches unread messages within date range
+     - Filters by sender (`MAIL_SENDER_FILTER`) and subject keywords (`MAIL_SUBJECT_KEYWORDS`)
+     - Parses email body text using regex patterns
 
-2. **Email Parsing** ([arxiv_parser.py](src/ai_mail_relay/arxiv_parser.py))
-   - Extracts paper metadata (title, authors, categories, abstract, links) from email body
-   - Uses regex to split entries by "Title:" markers and parse structured fields
-   - The `ArxivPaper` dataclass represents each paper
+2. **Paper Parsing** ([arxiv_parser.py](src/ai_mail_relay/arxiv_parser.py))
+   - Defines `ArxivPaper` dataclass representing each paper
+   - Email mode: Extracts paper metadata from email body using regex
+   - API mode: Directly populates `ArxivPaper` from XML data
+   - Uses regex to split entries by "Title:" markers and parse structured fields (email mode only)
 
 3. **Filtering**
    - Papers are filtered by category whitelist (`ARXIV_ALLOWED_CATEGORIES`) or keyword matching (`ARXIV_KEYWORDS`)
@@ -72,13 +85,16 @@ The application follows a linear pipeline architecture orchestrated by [pipeline
 ### Configuration System
 
 [config.py](src/ai_mail_relay/config.py) uses frozen dataclasses for immutability:
-- `MailboxConfig`: IMAP settings and email filtering rules
+- `ArxivConfig`: Fetching mode ("api" or "email") and API-specific settings (NEW)
+- `MailboxConfig`: IMAP settings and email filtering rules (only validated in email mode)
 - `OutboxConfig`: SMTP settings and recipient addresses
 - `FilteringConfig`: arXiv category/keyword filters and date range
 - `LLMConfig`: LLM provider, model, API credentials, and request parameters
 - `Settings`: Top-level container with `validate()` for required field checks
 
 Environment variables are read via `os.getenv()` in field factories. Helper functions `_get_env_list()` and `_get_env_bool()` parse comma-separated lists and boolean values.
+
+The `Settings.validate()` method conditionally validates IMAP credentials only when `ARXIV_FETCH_MODE=email`.
 
 ### LLM Provider System
 
@@ -88,6 +104,20 @@ The provider system uses a registry pattern in [llm_client.py](src/ai_mail_relay
 - Provider-specific endpoint construction happens in `__init__`
 - Providers automatically swap default OpenAI endpoint to their own service URLs
 - Error handling via `LLMProviderError` for HTTP failures
+
+### Concurrency and Rate Limiting
+
+[llm_client.py](src/ai_mail_relay/llm_client.py) implements multi-threaded concurrent LLM requests:
+- `ThreadPoolExecutor` with configurable worker count (`LLM_MAX_CONCURRENT`, default 4)
+- `RateLimiter` class enforces requests-per-minute limits using a fixed-window algorithm
+- `summarize_papers()` uses `asyncio.gather()` with `loop.run_in_executor()` to parallelize API calls
+- Automatic retry with exponential backoff on 429 rate limit errors (configurable via `LLM_RETRY_ON_RATE_LIMIT`)
+- Configuration via environment variables:
+  - `LLM_MAX_CONCURRENT`: Maximum concurrent threads (default: 4)
+  - `LLM_RATE_LIMIT_RPM`: Maximum requests per minute (0 = unlimited, default: 20)
+  - `LLM_RETRY_ON_RATE_LIMIT`: Enable retry on 429 errors (default: true)
+  - `LLM_RETRY_ATTEMPTS`: Number of retry attempts (default: 3)
+  - `LLM_RETRY_BASE_DELAY`: Base delay in seconds for exponential backoff (default: 1.0)
 
 ### Email Parsing Logic
 

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+import threading
+import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 from .arxiv_parser import ArxivPaper
@@ -17,11 +22,40 @@ from .llm_providers import (
     QwenProvider,
 )
 
+
 LOGGER = logging.getLogger(__name__)
 
 
+class RateLimiter:
+    """Simple fixed-window rate limiter (requests per minute)."""
+
+    def __init__(self, requests_per_minute: int) -> None:
+        self._rpm = requests_per_minute
+        self._timestamps: deque[float] = deque()
+        self._lock = threading.Lock()
+        self._period = 60.0
+
+    def acquire(self) -> None:
+        if self._rpm <= 0:
+            return
+
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                while self._timestamps and now - self._timestamps[0] >= self._period:
+                    self._timestamps.popleft()
+
+                if len(self._timestamps) < self._rpm:
+                    self._timestamps.append(now)
+                    return
+
+                wait_time = self._period - (now - self._timestamps[0])
+
+            time.sleep(max(wait_time, 0.05))
+
+
 class LLMClient:
-    """Facade over provider-specific implementations."""
+    """Facade over provider-specific implementations with threaded concurrency."""
 
     def __init__(self, config: LLMConfig) -> None:
         self._config = config
@@ -47,56 +81,84 @@ class LLMClient:
 
         self._provider = provider_cls(config)
         self._response_format = config.response_format
+        self._rate_limiter = RateLimiter(config.rate_limit_rpm)
 
-    def summarize_papers(self, papers: List[ArxivPaper]) -> str:
-        """Return a digest summary for the provided papers by processing each paper individually."""
+    async def summarize_papers(self, papers: List[ArxivPaper]) -> str:
+        """Return a digest summary for the provided papers using a thread pool."""
         if not papers:
             return "No AI-relevant submissions were detected in today's arXiv digest."
 
-        all_summaries = []
-        total_papers = len(papers)
+        loop = asyncio.get_running_loop()
+        LOGGER.info(
+            "Processing %d papers with up to %d concurrent LLM requests",
+            len(papers),
+            self._config.max_concurrent_requests,
+        )
 
-        LOGGER.info(f"Starting to process {total_papers} papers individually...")
+        with ThreadPoolExecutor(max_workers=self._config.max_concurrent_requests) as executor:
+            tasks = [
+                loop.run_in_executor(executor, self._summarize_paper_sync, idx, paper)
+                for idx, paper in enumerate(papers, start=1)
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for idx, paper in enumerate(papers, start=1):
-            LOGGER.info(f"Processing paper {idx}/{total_papers}: {paper.title[:60]}...")
+        combined_blocks: List[str] = []
+        for idx, result in enumerate(results, start=1):
+            paper = papers[idx - 1]
+            if isinstance(result, Exception):
+                LOGGER.error("Failed to summarize paper %d (%s): %s", idx, paper.title, result)
+                combined_blocks.append(f"## Paper {idx}: {paper.title}\n\n生成摘要失败：{result}")
+            else:
+                combined_blocks.append(f"## Paper {idx}: {paper.title}\n\n{result}")
 
-            try:
-                # Generate summary for single paper
-                summary = self.summarize_single_paper(paper)
+        LOGGER.info("Completed LLM summarization for %d papers", len(papers))
 
-                # Extract research field and work content from summary
-                self._extract_paper_metadata(summary, paper)
-
-                # Collect summary with proper header for compatibility
-                all_summaries.append(f"## Paper {idx}: {paper.title}\n\n{summary}")
-
-                LOGGER.info(f"Successfully processed paper {idx}/{total_papers}")
-
-            except Exception as e:
-                error_msg = f"生成摘要失败：{str(e)}"
-                LOGGER.error(f"Failed to summarize paper {idx} ({paper.title}): {e}")
-                all_summaries.append(f"## Paper {idx}: {paper.title}\n\n{error_msg}")
-
-        LOGGER.info(f"Completed processing all {total_papers} papers")
-
-        # Join all summaries into markdown format
-        combined_summary = "\n\n".join(all_summaries)
-
+        combined_summary = "\n\n".join(combined_blocks)
         if self._response_format == "markdown":
             return combined_summary
 
         # Allow simple text fallback when markdown is not desired.
         return combined_summary.replace("*", "").replace("#", "")
 
-    def summarize_single_paper(self, paper: ArxivPaper) -> str:
-        """Generate summary for a single paper."""
+    def _summarize_paper_sync(self, idx: int, paper: ArxivPaper) -> str:
+        """Summarize a single paper within a worker thread."""
+        LOGGER.debug("Thread worker picked paper %d: %s", idx, paper.title)
         prompt = self._build_single_paper_prompt(paper)
-        try:
-            summary = self._provider.generate(prompt)
-            return summary
-        except LLMProviderError as exc:
-            raise RuntimeError(f"Failed to obtain LLM summary: {exc}") from exc
+        summary = self._call_provider_with_retry(prompt)
+        self._extract_paper_metadata(summary, paper)
+        return summary
+
+    def _call_provider_with_retry(self, prompt: str) -> str:
+        """Call provider with rate limiting and optional retries."""
+        attempts = self._config.retry_attempts if self._config.retry_on_rate_limit else 0
+        for attempt in range(attempts + 1):
+            self._rate_limiter.acquire()
+            try:
+                return self._provider.generate(prompt)
+            except LLMProviderError as exc:
+                if (
+                    self._config.retry_on_rate_limit
+                    and exc.status_code == 429
+                    and attempt < attempts
+                ):
+                    delay = self._config.retry_base_delay * (2 ** attempt)
+                    LOGGER.warning(
+                        "Rate limit hit (attempt %d/%d). Retrying in %.1fs.",
+                        attempt + 1,
+                        attempts + 1,
+                        delay,
+                    )
+                    time.sleep(delay)
+                    continue
+                raise RuntimeError(f"Failed to obtain LLM summary: {exc}") from exc
+        raise RuntimeError("Failed to obtain LLM summary after retries.")
+
+    def summarize_single_paper(self, paper: ArxivPaper) -> str:
+        """Synchronous helper for unit tests or manual use."""
+        prompt = self._build_single_paper_prompt(paper)
+        summary = self._call_provider_with_retry(prompt)
+        self._extract_paper_metadata(summary, paper)
+        return summary
 
     def _build_single_paper_prompt(self, paper: ArxivPaper) -> str:
         """Build prompt for a single paper with research field requirement."""
@@ -141,53 +203,13 @@ class LLMClient:
 
         return "\n\n".join(["\n".join(paper_info), instruction])
 
-    def _build_prompt(self, papers: List[ArxivPaper]) -> str:
-        """Legacy method for batch processing (deprecated, kept for compatibility)."""
-        blocks = []
-        for idx, paper in enumerate(papers, start=1):
-            block_lines = [
-                f"Paper {idx}:",
-                f"Title: {paper.title}",
-                f"Authors: {paper.authors or 'Unknown'}",
-                f"Categories: {', '.join(paper.categories) or 'Unspecified'}",
-                f"Abstract: {paper.abstract}",
-            ]
-            if paper.links:
-                block_lines.append(f"Links: {', '.join(paper.links)}")
-            blocks.append("\n".join(block_lines))
-
-        instruction = """
-请为每篇论文生成结构化的中文摘要，包含以下部分：
-
-1. **细分领域**：给出这篇论文所属的层级化研究领域（格式：一级领域 → 二级领域 → 三级领域）
-2. **工作内容**：用一句话（不超过100字）总结这篇论文是做什么工作的
-3. **研究背景**：简要说明研究的动机和现有问题
-4. **方法**：描述论文提出的主要方法或技术
-5. **创新点**：突出论文的关键创新之处
-6. **实验结果**：总结主要的实验发现（如有）
-7. **结论**：概括论文的主要贡献和影响
-
-输出格式要求：
-- 每篇论文使用 "## Paper {编号}: {论文标题}" 作为标题
-- 在标题下第一行立即输出 "**细分领域**：{层级化领域}"
-- 第二行输出 "**工作内容**：{一句话总结}"
-- 其他部分使用 "**部分名**：内容" 的格式
-- 保持简洁，除工作内容外每个部分2-3句话
-- 使用 Markdown 格式
-"""
-
-        blocks.append(instruction)
-        return "\n\n".join(blocks)
-
     def _extract_paper_metadata(self, summary_md: str, paper: ArxivPaper) -> None:
         """Extract research field and work content from a single paper's summary."""
-        # Extract research field
-        field_match = re.search(r'\*\*细分领域\*\*[：:]\s*(.+?)(?:\n|$)', summary_md)
+        field_match = re.search(r"\*\*细分领域\*\*[：:]\s*(.+?)(?:\n|$)", summary_md)
         if field_match:
             paper.research_field = field_match.group(1).strip()
 
-        # Extract work content
-        work_match = re.search(r'\*\*工作内容\*\*[：:]\s*(.+?)(?:\n|$)', summary_md)
+        work_match = re.search(r"\*\*工作内容\*\*[：:]\s*(.+?)(?:\n|$)", summary_md)
         if work_match:
             paper.summary = work_match.group(1).strip()
 

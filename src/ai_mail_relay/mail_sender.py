@@ -151,18 +151,18 @@ class MailSender:
       .work-summary {{ background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2c3e50; padding: 15px; border-radius: 6px; margin-bottom: 12px; font-size: 15px; line-height: 1.6; font-weight: 500; border-left: 4px solid #667eea; }}
       .research-field {{ background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2c3e50; padding: 15px; border-radius: 6px; font-size: 14px; line-height: 1.6; font-weight: 500; border-left: 4px solid #667eea; }}
 
-      .basic-info {{ padding: 0 20px 20px 20px; background: white; }}
+      .basic-info {{ padding: 0 20px 20px 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 8px; }}
       .basic-info summary {{ list-style: none; }}
       .basic-info summary::-webkit-details-marker {{ display: none; }}
 
-      .info-header {{ cursor: pointer; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none; transition: all 0.3s; }}
-      .info-header:hover {{ transform: translateY(-2px); box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4); }}
+      .info-header {{ cursor: pointer; padding: 15px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2c3e50; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none; transition: all 0.3s; border: 1px solid rgba(102, 126, 234, 0.25); }}
+      .info-header:hover {{ transform: translateY(-2px); box-shadow: 0 4px 8px rgba(102, 126, 234, 0.25); }}
 
       .info-title {{ font-size: 16px; font-weight: 600; }}
 
       .basic-info[open] .info-header {{ border-radius: 6px 6px 0 0; }}
 
-      .info-content {{ padding: 20px; background: #f8f9fa; border-radius: 0 0 6px 6px; margin-top: -1px; }}
+      .info-content {{ padding: 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 0 0 6px 6px; margin-top: -1px; }}
       .info-row {{ display: flex; margin-bottom: 10px; font-size: 14px; }}
       .info-row:last-child {{ margin-bottom: 0; }}
       .info-label {{ font-weight: 600; color: #495057; min-width: 100px; flex-shrink: 0; }}
@@ -170,19 +170,19 @@ class MailSender:
       .paper-link {{ color: #667eea; text-decoration: none; font-weight: 500; }}
       .paper-link:hover {{ text-decoration: underline; }}
 
-      .ai-summary {{ padding: 20px; background: white; border-top: 1px solid #e1e4e8; }}
+      .ai-summary {{ padding: 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 8px; border-top: 1px solid rgba(103, 126, 234, 0.25); }}
       .ai-summary summary {{ list-style: none; }}
       .ai-summary summary::-webkit-details-marker {{ display: none; }}
 
-      .summary-header {{ cursor: pointer; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none; transition: all 0.3s; }}
-      .summary-header:hover {{ transform: translateY(-2px); box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4); }}
+      .summary-header {{ cursor: pointer; padding: 15px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2c3e50; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none; transition: all 0.3s; border: 1px solid rgba(102, 126, 234, 0.25); }}
+      .summary-header:hover {{ transform: translateY(-2px); box-shadow: 0 4px 8px rgba(102, 126, 234, 0.25); }}
 
       .summary-title {{ font-size: 16px; font-weight: 600; }}
       .toggle-hint {{ font-size: 12px; opacity: 0.9; font-weight: 400; }}
 
       .ai-summary[open] .summary-header {{ border-radius: 6px 6px 0 0; }}
 
-      .summary-content {{ color: #333; line-height: 1.8; padding: 20px; background: #f8f9fa; border-radius: 0 0 6px 6px; margin-top: -1px; }}
+      .summary-content {{ color: #333; line-height: 1.8; padding: 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 0 0 6px 6px; margin-top: -1px; }}
       .summary-content p {{ margin: 12px 0; }}
       .summary-content strong {{ color: #1a1a1a; font-weight: 600; }}
       .summary-content h3 {{ display: none; }}
@@ -285,4 +285,3 @@ class MailSender:
 
 
 __all__ = ["MailSender"]
-
