@@ -160,6 +160,7 @@ class ArxivAPIFetcher:
         """
         # Extract publication date first for filtering
         published_elem = entry.find("atom:published", NAMESPACES)
+        pub_date = None
         if published_elem is not None and published_elem.text:
             pub_date_str = published_elem.text.split("T")[0]  # YYYY-MM-DD
             try:
@@ -224,6 +225,7 @@ class ArxivAPIFetcher:
             abstract=abstract,
             links=links,
             arxiv_id=arxiv_id,
+            published_date=pub_date or target_date,
         )
 
 

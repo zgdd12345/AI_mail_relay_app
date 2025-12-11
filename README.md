@@ -1,6 +1,6 @@
 # AI Mail Relay
 
-抓取我订阅的 arXiv 邮件，将当日 AI 相关论文筛选后，调用大模型生成摘要并重新转发给指定邮箱。
+通过 arXiv API 获取每日 AI 相关论文，筛选后调用大模型生成摘要并转发给指定邮箱。
 
 ## 📚 文档导航
 
@@ -12,21 +12,24 @@
 
 ### 开发者文档
 - **[CLAUDE.md](CLAUDE.md)** - 项目架构、技术细节、开发指南
+- **[DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)** - 文献管理与用户管理系统开发计划
 - **[CHANGELOG.md](CHANGELOG.md)** - 版本更新历史
 
 ---
 
 ## 功能概览
-- **双模式获取论文**：支持直接从 arXiv API 获取（推荐）或从 IMAP 邮箱获取订阅邮件
+- **API 获取论文**：从 arXiv API 获取每日论文
 - 解析论文信息，按类别 / 关键词筛选 AI 相关论文
 - 调用多种大模型接口（OpenAI、DeepSeek、Claude、千问、字节等）生成 Markdown 摘要
 - 多线程并发生成论文摘要，支持请求速率限制与退避重试
 - 通过 SMTP 转发摘要邮件，并附带包含详细内容的附件
+- 若当天无论文，自动发送提醒邮件，便于监控任务状态
+- **文献管理**：持久化存储论文，跨运行去重，避免重复处理（v2.0+）
+- **多用户订阅**：支持多用户按分类/关键词订阅，个性化邮件投递（v2.0+）
 
 ## 环境要求
 - Python 3.10+
-- **API 模式**（推荐）：只需 SMTP 邮箱账号用于发送邮件
-- **邮箱模式**（可选）：需要 IMAP 和 SMTP 邮箱账号
+- 只需 SMTP 邮箱账号用于发送邮件
 - 至少一家支持的 LLM 服务 API Key（可通过 `LLM_BASE_URL` 指定自建代理）
 
 ## 安装
@@ -41,8 +44,8 @@ pip install -e .
 ### 必需配置
 
 ```bash
-# arXiv 获取模式
-ARXIV_FETCH_MODE=api  # 推荐使用 API 模式
+# arXiv 获取模式（固定为 API）
+ARXIV_FETCH_MODE=api
 
 # SMTP 发送配置
 SMTP_HOST=smtp.gmail.com
@@ -52,6 +55,7 @@ SMTP_PASSWORD=your-app-specific-password  # Gmail 需要应用专用密码
 SMTP_USE_TLS=true
 MAIL_FROM_ADDRESS=your-email@gmail.com
 MAIL_TO_ADDRESS=your-email@gmail.com
+# 提示：Gmail 应用专用密码请填 16 位不含空格的字符，否则会返回 5.7.8 BadCredentials
 
 # LLM 配置
 LLM_PROVIDER=openai
@@ -73,7 +77,7 @@ SMTP_RETRY_BASE_DELAY=2.0    # 基础延迟（秒），默认 2.0
 | 配置项 | 说明 | 默认值 |
 | --- | --- | --- |
 | **arXiv 获取** |
-| `ARXIV_FETCH_MODE` | 获取模式（`api` 推荐 / `email`） | `api` |
+| `ARXIV_FETCH_MODE` | 获取模式（仅支持 `api`） | `api` |
 | `ARXIV_API_MAX_RESULTS` | API 模式下最大获取论文数 | `200` |
 | `ARXIV_ALLOWED_CATEGORIES` | AI 类别白名单（逗号分隔） | `cs.AI,cs.LG,cs.CV,...` |
 | **SMTP 发送** |
@@ -94,43 +98,80 @@ SMTP_RETRY_BASE_DELAY=2.0    # 基础延迟（秒），默认 2.0
 
 📖 **完整配置列表**: 查看 [配置参考文档](docs/configuration.md)
 
+## 数据库配置（v2.0+）
+
+应用使用 SQLite 数据库存储已处理的论文，防止重复处理。
+
+### 初始化数据库
+```bash
+ai-mail-relay db init
+```
+
+### 查看数据库状态
+```bash
+ai-mail-relay db status
+```
+
+### 备份数据库
+```bash
+ai-mail-relay db backup
+ai-mail-relay db backup --output /path/to/backup.db
+```
+
+### 数据库配置选项
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `DATABASE_ENABLED` | 启用数据库存储 | `true` |
+| `DATABASE_PATH` | SQLite 数据库路径 | `./data/ai_mail_relay.db` |
+| `MULTI_USER_MODE` | 启用多用户模式（需创建用户与订阅） | `false` |
+| `SKIP_DELIVERED_PAPERS` | 多用户模式下跳过已投递论文 | `true` |
+
+## 用户管理（多用户模式）
+
+### 添加用户
+```bash
+ai-mail-relay user add --email "user@example.com" --name "张三"
+```
+
+### 管理订阅
+```bash
+# 添加分类订阅
+ai-mail-relay user subscribe --email "user@example.com" --categories "cs.AI,cs.LG"
+
+# 添加关键词订阅
+ai-mail-relay user subscribe --email "user@example.com" --keywords "transformer,LLM"
+
+# 查看订阅
+ai-mail-relay user subscriptions --email "user@example.com"
+
+# 取消订阅
+ai-mail-relay user unsubscribe --email "user@example.com" --categories "cs.CV"
+```
+
+### 用户列表
+```bash
+ai-mail-relay user list
+ai-mail-relay user show --email "user@example.com"
+```
+
 ## 使用说明
 ```bash
 ai-mail-relay
 ```
 
 程序执行流程：
-1. **获取论文**：
-   - **API 模式**（推荐）：直接从 arXiv API 获取指定类别的最新论文
-   - **邮箱模式**：从 IMAP 邮箱读取未读的 arXiv 订阅邮件
+1. **获取论文**：通过 arXiv API 获取指定类别的最新论文
 2. 解析论文信息，按类别或关键词筛选 AI 相关论文
 3. 将筛选出的论文提交给 LLM 生成摘要（支持多线程并发处理）
 4. 通过 SMTP 发送邮件：正文为摘要，附件为详细内容（Markdown 文本）
 
-### 论文获取模式对比
-
-| 特性 | API 模式（推荐） | 邮箱模式 |
-|------|----------------|---------|
-| **配置复杂度** | 简单（无需 IMAP） | 复杂（需要 IMAP 凭据） |
-| **可靠性** | 高（直接访问 arXiv） | 中（依赖邮件服务） |
-| **运行频率** | 可多次运行 | 每天一次 |
-| **论文覆盖** | 任意类别组合 | 仅订阅内容 |
-| **测试友好** | 易于测试 | 需要真实邮件 |
-| **速率限制** | 3 秒/请求 | 无 |
-
-**配置示例**：
+**配置示例（仅 API 模式）：**
 
 ```bash
-# API 模式（推荐）- 无需 IMAP 配置
 ARXIV_FETCH_MODE=api
 ARXIV_API_MAX_RESULTS=200
 ARXIV_ALLOWED_CATEGORIES=cs.AI,cs.LG,cs.CV,cs.CL
-
-# 邮箱模式 - 需要完整的 IMAP 配置
-ARXIV_FETCH_MODE=email
-IMAP_HOST=imap.gmail.com
-IMAP_USER=your-email@gmail.com
-IMAP_PASSWORD=your-app-password
 ```
 
 ### 并发控制说明
@@ -175,7 +216,7 @@ LLM_RATE_LIMIT_RPM=0
 # 2. 编辑配置文件
 vim .env
 
-# 3. 设置定时任务（默认每天 11:00, 12:00, 13:00 北京时间运行）
+# 3. 设置定时任务（默认每天 08:00 北京时间运行）
 ./deploy/setup_cron.sh
 ```
 
@@ -191,7 +232,7 @@ vim .env
 
 # 或手动添加 cron 任务
 crontab -e
-# 添加: 0 11,12,13 * * * cd /path/to/AI_mail_relay_app && ./deploy/run.sh
+# 添加: 0 8 * * * cd /path/to/AI_mail_relay_app && ./deploy/run.sh
 ```
 
 **日志查看**：
@@ -251,12 +292,6 @@ python -m ai_mail_relay.main --log-level DEBUG
 ```bash
 # 完整测试（API 模式，3 篇论文）
 python test.py
-
-# 测试 API 模式
-python test.py --mode api
-
-# 测试邮箱模式
-python test.py --mode email
 
 # 快速测试（跳过 LLM）
 python test.py --no-llm

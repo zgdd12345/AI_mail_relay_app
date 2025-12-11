@@ -135,21 +135,47 @@ class FilteringConfig:
 class ArxivConfig:
     """Configuration for arXiv data fetching mode."""
 
-    fetch_mode: str = field(
-        default_factory=lambda: os.getenv("ARXIV_FETCH_MODE", "api")
-    )
+    fetch_mode: str = field(default="api")
     api_max_results: int = field(
         default_factory=lambda: int(os.getenv("ARXIV_API_MAX_RESULTS", "200"))
     )
 
     def validate(self) -> None:
-        if self.fetch_mode not in {"email", "api"}:
-            raise ValueError(
-                f"Invalid ARXIV_FETCH_MODE '{self.fetch_mode}'. "
-                "Valid options: email, api"
-            )
+        if self.fetch_mode != "api":
+            raise ValueError("Only API mode is supported; set ARXIV_FETCH_MODE=api.")
         if self.api_max_results < 1:
             raise ValueError("ARXIV_API_MAX_RESULTS must be >= 1")
+
+
+@dataclass(frozen=True)
+class DatabaseConfig:
+    """Configuration for SQLite database storage."""
+
+    enabled: bool = field(
+        default_factory=lambda: _get_env_bool("DATABASE_ENABLED", True)
+    )
+    path: str = field(
+        default_factory=lambda: os.getenv("DATABASE_PATH", "./data/ai_mail_relay.db")
+    )
+
+    def validate(self) -> None:
+        if self.enabled and not self.path:
+            raise ValueError("DATABASE_PATH must be provided when database is enabled")
+
+
+@dataclass(frozen=True)
+class MultiUserConfig:
+    """Configuration for multi-user subscription mode."""
+
+    enabled: bool = field(
+        default_factory=lambda: _get_env_bool("MULTI_USER_MODE", False)
+    )
+    skip_delivered: bool = field(
+        default_factory=lambda: _get_env_bool("SKIP_DELIVERED_PAPERS", True)
+    )
+
+    def validate(self) -> None:
+        pass  # No validation needed currently
 
 
 @dataclass(frozen=True)
@@ -222,14 +248,15 @@ class Settings:
     filtering: FilteringConfig = field(default_factory=FilteringConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     arxiv: ArxivConfig = field(default_factory=ArxivConfig)
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
+    multi_user: MultiUserConfig = field(default_factory=MultiUserConfig)
 
     def validate(self) -> None:
-        # Only validate mailbox config if using email mode
-        if self.arxiv.fetch_mode == "email":
-            self.mailbox.validate()
         self.outbox.validate()
         self.llm.validate()
         self.arxiv.validate()
+        self.database.validate()
+        self.multi_user.validate()
 
 
 def today_string() -> str:
@@ -243,6 +270,8 @@ __all__ = [
     "FilteringConfig",
     "LLMConfig",
     "ArxivConfig",
+    "DatabaseConfig",
+    "MultiUserConfig",
     "Settings",
     "today_string",
 ]

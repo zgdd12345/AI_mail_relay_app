@@ -9,7 +9,7 @@ import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import Any, Dict, List
 
 from .arxiv_parser import ArxivPaper
 from .config import LLMConfig
@@ -96,11 +96,26 @@ class LLMClient:
         )
 
         with ThreadPoolExecutor(max_workers=self._config.max_concurrent_requests) as executor:
-            tasks = [
-                loop.run_in_executor(executor, self._summarize_paper_sync, idx, paper)
-                for idx, paper in enumerate(papers, start=1)
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            tasks: list[asyncio.Future] = []
+            future_to_idx: Dict[asyncio.Future, int] = {}
+            for idx, paper in enumerate(papers, start=1):
+                task = loop.run_in_executor(executor, self._summarize_paper_sync, idx, paper)
+                tasks.append(task)
+                future_to_idx[task] = idx
+
+            results: list[Any] = [None] * len(papers)
+            completed = 0
+            total = len(papers)
+
+            for future in asyncio.as_completed(tasks):
+                idx = future_to_idx[future]
+                try:
+                    result = await future
+                    results[idx - 1] = result
+                except Exception as exc:  # pragma: no cover - defensive
+                    results[idx - 1] = exc
+                completed += 1
+                self._log_progress(completed, total)
 
         combined_blocks: List[str] = []
         for idx, result in enumerate(results, start=1):
@@ -212,6 +227,17 @@ class LLMClient:
         work_match = re.search(r"\*\*工作内容\*\*[：:]\s*(.+?)(?:\n|$)", summary_md)
         if work_match:
             paper.summary = work_match.group(1).strip()
+
+    @staticmethod
+    def _log_progress(completed: int, total: int) -> None:
+        """Log a simple textual progress bar."""
+        if total <= 0:
+            return
+        width = 20
+        ratio = min(max(completed / total, 0.0), 1.0)
+        filled = int(ratio * width)
+        bar = "#" * filled + "-" * (width - filled)
+        LOGGER.info("LLM progress [%s] %d/%d", bar, completed, total)
 
 
 __all__ = ["LLMClient"]

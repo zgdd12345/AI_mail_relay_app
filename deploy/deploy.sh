@@ -14,10 +14,10 @@ echo ""
 # 检查 Python 版本
 echo "✓ 检查 Python 版本..."
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-REQUIRED_VERSION="3.10"
+REQUIRED_VERSION="3.9"
 
-if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)"; then
-    echo "✗ 错误: 需要 Python 3.10 或更高版本 (当前: $PYTHON_VERSION)"
+if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 9) else 1)"; then
+    echo "✗ 错误: 需要 Python 3.9 或更高版本 (当前: $PYTHON_VERSION)"
     exit 1
 fi
 echo "  Python 版本: $PYTHON_VERSION ✓"
@@ -27,17 +27,17 @@ echo ""
 echo "✓ 创建 Python 虚拟环境..."
 cd "$PROJECT_DIR"
 
-if [ -d "venv" ]; then
+if [ -d "mailrelay" ]; then
     echo "  虚拟环境已存在，跳过创建"
 else
-    python3 -m venv venv
+    python3 -m venv mailrelay
     echo "  虚拟环境创建成功 ✓"
 fi
 echo ""
 
 # 激活虚拟环境
 echo "✓ 激活虚拟环境..."
-source venv/bin/activate
+source mailrelay/bin/activate
 
 # 安装依赖
 echo "✓ 安装依赖包..."

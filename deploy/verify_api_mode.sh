@@ -45,9 +45,9 @@ echo "1. 检查 Python 环境"
 echo "────────────────────────────────────────────────────────────────"
 
 # 检查虚拟环境
-if [ -d "venv" ]; then
-    check_pass "虚拟环境存在"
-    source venv/bin/activate
+if [ -d "mailrelay" ]; then
+    check_pass "虚拟环境存在 (mailrelay)"
+    source mailrelay/bin/activate
 else
     check_fail "虚拟环境不存在，请先运行 ./deploy/deploy.sh"
     exit 1

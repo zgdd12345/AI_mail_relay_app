@@ -2,6 +2,8 @@
 
 本文档介绍如何在服务器上部署 AI Mail Relay 并设置定时任务。
 
+> 说明：当前版本仅支持 **API 模式** 获取论文，邮箱模式已移除。
+
 ## 📋 部署前准备
 
 ### 系统要求
@@ -139,18 +141,16 @@ LLM_MODEL=deepseek-chat
 
 按提示操作：
 1. 输入运行时间（格式：`HH:MM,HH:MM,HH:MM`）
-2. 默认为 `11:00,12:00,13:00`（北京时间）
+2. 默认为 `08:00`（北京时间，每天 08:00 推送前一日论文）
 3. 按 Enter 确认
 
 **示例输出**：
 ```
-运行时间 [直接按 Enter 使用默认值]: 09:00,14:00,18:00
+运行时间 [直接按 Enter 使用默认值]:
 
-设置的运行时间: 09:00,14:00,18:00
+设置的运行时间: 08:00
 
-  ✓ 09:00 -> cron: 0 9 * * *
-  ✓ 14:00 -> cron: 0 14 * * *
-  ✓ 18:00 -> cron: 0 18 * * *
+  ✓ 08:00 -> cron: 0 8 * * *
 
 Cron 任务设置成功！
 ```
@@ -166,10 +166,8 @@ crontab -e
 添加以下内容（替换 `/path/to/` 为实际路径）：
 
 ```cron
-# AI Mail Relay - 每天 11:00, 12:00, 13:00 运行
-0 11 * * * cd /path/to/AI_mail_relay_app && /path/to/AI_mail_relay_app/deploy/run.sh >> /path/to/AI_mail_relay_app/logs/cron.log 2>&1
-0 12 * * * cd /path/to/AI_mail_relay_app && /path/to/AI_mail_relay_app/deploy/run.sh >> /path/to/AI_mail_relay_app/logs/cron.log 2>&1
-0 13 * * * cd /path/to/AI_mail_relay_app && /path/to/AI_mail_relay_app/deploy/run.sh >> /path/to/AI_mail_relay_app/logs/cron.log 2>&1
+# AI Mail Relay - 每天 08:00 运行
+0 8 * * * cd /path/to/AI_mail_relay_app && /path/to/AI_mail_relay_app/deploy/run.sh >> /path/to/AI_mail_relay_app/logs/cron.log 2>&1
 ```
 
 **Cron 时间格式说明**：
@@ -184,10 +182,10 @@ crontab -e
 ```
 
 **常用时间示例**：
-- `0 9 * * *` - 每天 09:00
+- `0 8 * * *` - 每天 08:00
 - `30 14 * * *` - 每天 14:30
 - `0 */6 * * *` - 每 6 小时一次
-- `0 9 * * 1-5` - 工作日 09:00
+- `0 8 * * 1-5` - 工作日 08:00
 
 ---
 
@@ -291,7 +289,7 @@ crontab -r
 git pull
 
 # 重新安装
-source venv/bin/activate
+source mailrelay/bin/activate
 pip install -e .
 
 # 恢复 Cron 任务

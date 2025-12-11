@@ -8,6 +8,7 @@ import smtplib
 import socket
 import time
 from email.message import EmailMessage
+from email.utils import formataddr
 from typing import List
 
 from .arxiv_parser import ArxivPaper
@@ -28,6 +29,9 @@ class MailSender:
         summary_md: str,
         papers: List[ArxivPaper],
         report_date: str | None = None,
+        to_address: str | None = None,
+        recipient_name: str | None = None,
+        summary_map: dict | None = None,
     ) -> None:
         """Compose and send the digest email."""
         if report_date is None:
@@ -35,14 +39,18 @@ class MailSender:
 
         message = EmailMessage()
         message["From"] = self._config.from_address
-        message["To"] = self._config.to_address
+        target = to_address or self._config.to_address
+        message["To"] = formataddr((recipient_name, target)) if recipient_name else target
         message["Subject"] = f"📚 arXiv AI 论文摘要 — {report_date} ({len(papers)}篇)"
         message.set_content(
             f"每日 arXiv AI 论文摘要（共 {len(papers)} 篇）\n\n"
             "请在支持 HTML 的邮件客户端中查看完整格式。\n"
             "附件包含所有论文的基本信息和原始摘要。\n"
         )
-        message.add_alternative(self._build_body_with_papers(summary_md, papers), subtype="html")
+        message.add_alternative(
+            self._build_body_with_papers(summary_md, papers, summary_map),
+            subtype="html",
+        )
 
         attachment_content = self._build_attachment(summary_md, papers)
         filename = f"arxiv_ai_digest_{report_date}.md"
@@ -54,6 +62,42 @@ class MailSender:
         )
 
         LOGGER.info("Sending digest email with %d papers", len(papers))
+        self._send(message)
+
+    def send_no_papers(self, report_date: str) -> None:
+        """Send a minimal email when no papers are available."""
+        message = EmailMessage()
+        message["From"] = self._config.from_address
+        message["To"] = self._config.to_address
+        message["Subject"] = f"📚 arXiv AI 论文摘要 — {report_date}（未获取到论文）"
+
+        text_body = (
+            f"{report_date} 的 arXiv AI 论文未获取到符合条件的条目。\n"
+            "可能原因：当天未发布相关论文或全部被筛选条件过滤。\n"
+            "提示：如需调整筛选范围，请更新 ARXIV_ALLOWED_CATEGORIES 或 ARXIV_KEYWORDS 配置。\n"
+        )
+        message.set_content(text_body)
+        message.add_alternative(
+            f"""\
+<html>
+  <head><meta charset="UTF-8"></head>
+  <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;line-height:1.6;color:#333;padding:24px;background:#f5f6f8;">
+    <div style="background:#fff;border:1px solid #e1e4e8;border-radius:10px;padding:24px;max-width:720px;margin:0 auto;">
+      <h2 style="margin:0 0 12px 0;">📚 {report_date} 的 arXiv AI 摘要</h2>
+      <p style="margin:0 0 12px 0;">未获取到符合条件的论文。</p>
+      <ul style="padding-left:20px;margin:0 0 12px 0;">
+        <li>当天可能未发布相关论文</li>
+        <li>或已被类别/关键词筛选条件过滤</li>
+      </ul>
+      <p style="margin:0;">如需放宽范围，可调整 <code>ARXIV_ALLOWED_CATEGORIES</code> 或 <code>ARXIV_KEYWORDS</code>。</p>
+    </div>
+  </body>
+</html>
+""",
+            subtype="html",
+        )
+
+        LOGGER.info("Sending no-paper notification email for %s", report_date)
         self._send(message)
 
     def _send(self, message: EmailMessage) -> None:
@@ -130,16 +174,24 @@ class MailSender:
         )
         raise last_exception
 
-    def _build_body_with_papers(self, summary_md: str, papers: List[ArxivPaper]) -> str:
+    def _build_body_with_papers(
+        self,
+        summary_md: str,
+        papers: List[ArxivPaper],
+        summary_map: dict | None = None,
+    ) -> str:
         """Build HTML email body with paper info and AI summaries integrated."""
-        # Parse AI summaries by paper
-        paper_summaries = self._parse_summaries_by_paper(summary_md, len(papers))
+        paper_summaries = summary_map or self._parse_summaries_by_paper(summary_md)
 
         # Build integrated papers section
         papers_html = ""
         for idx, paper in enumerate(papers, start=1):
             arxiv_link = paper.links[0] if paper.links else f"https://arxiv.org/abs/{paper.arxiv_id}"
-            paper_summary = paper_summaries.get(idx, "暂无AI摘要")
+            paper_summary = (
+                paper_summaries.get(paper.arxiv_id)
+                or paper_summaries.get(idx)
+                or "暂无AI摘要"
+            )
 
             papers_html += f"""
     <div class="paper-card">
@@ -311,7 +363,8 @@ class MailSender:
             .replace('"', "&quot;")
         )
 
-    def _parse_summaries_by_paper(self, summary_md: str, num_papers: int) -> dict:
+    @staticmethod
+    def _parse_summaries_by_paper(summary_md: str) -> dict:
         """Parse AI summaries and map them to paper numbers."""
         summaries = {}
 
@@ -329,6 +382,17 @@ class MailSender:
                 summaries[paper_num] = content
 
         return summaries
+
+    @staticmethod
+    def build_summary_map(summary_md: str, papers: List[ArxivPaper]) -> dict[str, str]:
+        """Build a mapping from arXiv ID to the detailed summary block."""
+        summaries_by_index = MailSender._parse_summaries_by_paper(summary_md)
+        mapping: dict[str, str] = {}
+        for idx, paper in enumerate(papers, start=1):
+            content = summaries_by_index.get(idx)
+            if paper.arxiv_id and content:
+                mapping[paper.arxiv_id] = content
+        return mapping
 
     def _markdown_to_html(self, md_text: str) -> str:
         """Simple Markdown to HTML conversion for email display."""

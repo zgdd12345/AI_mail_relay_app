@@ -3,8 +3,6 @@
 
 Usage:
     python test.py              # Full test with 3 papers
-    python test.py --mode api   # Test API mode only
-    python test.py --mode email # Test email mode only
     python test.py --no-llm     # Skip LLM summarization (fast test)
 """
 
@@ -19,7 +17,7 @@ from dotenv import load_dotenv
 from src.ai_mail_relay.config import Settings
 from src.ai_mail_relay.llm_client import LLMClient
 from src.ai_mail_relay.mail_sender import MailSender
-from src.ai_mail_relay.pipeline import fetch_from_api, fetch_from_email
+from src.ai_mail_relay.pipeline import fetch_from_api
 from src.ai_mail_relay.arxiv_parser import filter_papers
 
 
@@ -34,38 +32,6 @@ async def test_api_mode(settings: Settings, max_papers: int = 3) -> None:
 
     if not papers:
         print("⚠️  没有获取到论文")
-        return []
-
-    # Filter
-    filtered = filter_papers(
-        papers,
-        settings.filtering.allowed_categories,
-        settings.filtering.keyword_filters
-    )
-    print(f"过滤后: {len(filtered)} 篇 AI 相关论文")
-
-    # Limit for testing
-    test_papers = filtered[:max_papers]
-
-    print(f"\n测试论文列表 (前 {len(test_papers)} 篇):")
-    for i, paper in enumerate(test_papers, 1):
-        print(f"  {i}. {paper.title[:70]}")
-        print(f"     类别: {paper.categories[:3]}")
-
-    return test_papers
-
-
-async def test_email_mode(settings: Settings, max_papers: int = 3) -> None:
-    """Test email mode fetching."""
-    print("\n" + "=" * 60)
-    print("测试邮箱模式")
-    print("=" * 60)
-
-    papers = fetch_from_email(settings)
-    print(f"从邮箱获取到 {len(papers)} 篇论文")
-
-    if not papers:
-        print("⚠️  没有获取到论文（可能邮箱中没有未读邮件）")
         return []
 
     # Filter
@@ -126,12 +92,6 @@ async def test_email_sending(settings: Settings, summary: str, papers: list) -> 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Test AI Mail Relay")
     parser.add_argument(
-        "--mode",
-        choices=["api", "email", "both"],
-        default="api",
-        help="Test mode (default: api)"
-    )
-    parser.add_argument(
         "--no-llm",
         action="store_true",
         help="Skip LLM summarization (faster)"
@@ -157,7 +117,6 @@ async def main() -> None:
     print("=" * 60)
     print("AI Mail Relay 测试脚本")
     print("=" * 60)
-    print(f"测试模式: {args.mode}")
     print(f"测试论文数: {args.papers}")
     print(f"LLM 提供商: {settings.llm.provider}")
     print(f"LLM 并发数: {settings.llm.max_concurrent_requests}")
@@ -172,11 +131,7 @@ async def main() -> None:
     # Test paper fetching
     papers = []
 
-    if args.mode in ["api", "both"]:
-        papers = await test_api_mode(settings, args.papers)
-
-    if args.mode in ["email", "both"] and not papers:
-        papers = await test_email_mode(settings, args.papers)
+    papers = await test_api_mode(settings, args.papers)
 
     if not papers:
         print("\n❌ 未获取到论文，测试结束")

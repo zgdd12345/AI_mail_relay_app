@@ -4,6 +4,8 @@
 
 This document provides a comprehensive reference for all AI Mail Relay configuration options.
 
+> 说明：自当前版本起仅支持 **API 模式** 获取 arXiv 论文，邮箱模式已移除，相关 IMAP 配置不再使用。
+
 ---
 
 ## 目录 | Table of Contents
@@ -62,15 +64,14 @@ CATEGORIES=cs.AI, cs.LG, cs.CV
 
 ### ARXIV_FETCH_MODE
 
-**描述：** arXiv 论文获取模式
+**描述：** arXiv 论文获取模式（固定为 `api`）
 
 **类型：** 字符串
 
 **默认值：** `api`
 
 **可选值：**
-- `api` - 从 arXiv API 直接获取（推荐）
-- `email` - 从 IMAP 邮箱解析邮件
+- `api` - 从 arXiv API 直接获取（唯一支持）
 
 **示例：**
 ```bash
@@ -78,9 +79,7 @@ ARXIV_FETCH_MODE=api
 ```
 
 **说明：**
-- `api` 模式更可靠、更快，不需要 IMAP 配置
-- `email` 模式是遗留模式，依赖邮件格式稳定性
-- 推荐使用 `api` 模式
+- 邮箱模式已移除，IMAP 相关配置不会生效
 
 ---
 
@@ -180,6 +179,7 @@ IMAP_PASSWORD=your-app-specific-password
 **注意：**
 - Gmail 需要使用应用专用密码
 - 生成地址：https://myaccount.google.com/apppasswords
+- 复制 16 位应用密码到 `.env` 时请去掉中间的空格，否则 IMAP 登录会返回 5.7.8 BadCredentials
 
 ---
 
@@ -305,6 +305,7 @@ SMTP_PASSWORD=your-app-specific-password
 **注意：**
 - Gmail 需要使用应用专用密码
 - 生成地址：https://myaccount.google.com/apppasswords
+- 复制 16 位应用密码到 `.env` 时请去掉中间的空格，否则 SMTP 登录会返回 5.7.8 BadCredentials
 
 ---
 

@@ -14,8 +14,8 @@ load_dotenv()
 settings = Settings()
 settings.validate()
 
-# Fetch emails
-target_date = datetime.now(UTC).date()
+# Fetch emails（默认查看昨天的 arXiv 邮件）
+target_date = (datetime.now(UTC) - timedelta(days=1)).date()
 oldest_date = target_date - timedelta(days=settings.filtering.max_days_back - 1)
 
 fetcher = MailFetcher(settings.mailbox)

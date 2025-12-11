@@ -3,16 +3,21 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_VENV="$PROJECT_DIR/mailrelay"
 
 # 设置环境
 cd "$PROJECT_DIR"
 export TZ=Asia/Shanghai
+# 确保 src 在 PYTHONPATH 中，避免未安装可编辑模式时报模块缺失
+export PYTHONPATH="$PROJECT_DIR/src:${PYTHONPATH:-}"
 
-# 激活虚拟环境
-if [ -f "venv/bin/activate" ]; then
-    source venv/bin/activate
+# 激活虚拟环境（优先使用项目 mailrelay，若已在 Conda/virtualenv 中则跳过）
+if [ -n "$VIRTUAL_ENV" ] || [ -n "$CONDA_PREFIX" ]; then
+    echo "检测到已激活的 Python 环境，跳过项目 mailrelay 环境"
+elif [ -f "$PROJECT_VENV/bin/activate" ]; then
+    source "$PROJECT_VENV/bin/activate"
 else
-    echo "错误: 虚拟环境不存在，请先运行 deploy.sh"
+    echo "错误: mailrelay 虚拟环境不存在，请先运行 deploy.sh"
     exit 1
 fi
 
@@ -50,7 +55,17 @@ fi
 # 分析运行结果
 if [ $EXIT_CODE -eq 0 ]; then
     # 检查是否跳过了邮件发送
-    if echo "$OUTPUT" | grep -q "skipping email sending"; then
+    if echo "$OUTPUT" | grep -q "no-paper notification"; then
+        echo "状态: 成功 (无论文，已发送提醒邮件)" | tee -a "$LOG_FILE"
+        echo "模式: $MODE" | tee -a "$LOG_FILE"
+        if echo "$OUTPUT" | grep -q "No papers found for"; then
+            echo "原因: 未获取到论文数据" | tee -a "$LOG_FILE"
+        elif echo "$OUTPUT" | grep -q "No AI-related papers after filtering"; then
+            echo "原因: 过滤后没有 AI 相关论文" | tee -a "$LOG_FILE"
+        elif echo "$OUTPUT" | grep -q "No unique papers after deduplication"; then
+            echo "原因: 去重后没有唯一论文" | tee -a "$LOG_FILE"
+        fi
+    elif echo "$OUTPUT" | grep -q "skipping email sending"; then
         echo "状态: 成功 (无需发送邮件)" | tee -a "$LOG_FILE"
         echo "模式: $MODE" | tee -a "$LOG_FILE"
         if echo "$OUTPUT" | grep -q "No relevant arXiv emails found"; then
