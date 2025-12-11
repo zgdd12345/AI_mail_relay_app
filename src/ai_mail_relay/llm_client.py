@@ -100,20 +100,22 @@ class LLMClient:
             future_to_idx: Dict[asyncio.Future, int] = {}
             for idx, paper in enumerate(papers, start=1):
                 task = loop.run_in_executor(executor, self._summarize_paper_sync, idx, paper)
-                tasks.append(task)
-                future_to_idx[task] = idx
+                wrapped = asyncio.ensure_future(task)
+                tasks.append(wrapped)
+                future_to_idx[wrapped] = idx
 
             results: list[Any] = [None] * len(papers)
             completed = 0
             total = len(papers)
 
             for future in asyncio.as_completed(tasks):
-                idx = future_to_idx[future]
+                idx = future_to_idx.get(future)
                 try:
                     result = await future
-                    results[idx - 1] = result
                 except Exception as exc:  # pragma: no cover - defensive
-                    results[idx - 1] = exc
+                    result = exc
+                if idx is not None:
+                    results[idx - 1] = result
                 completed += 1
                 self._log_progress(completed, total)
 
