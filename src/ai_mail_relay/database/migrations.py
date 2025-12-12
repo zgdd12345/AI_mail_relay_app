@@ -95,6 +95,74 @@ def migration_002_create_users_tables() -> None:
     conn.commit()
 
 
+@migration(3, "Create analysis tables for embeddings, clusters, and trends")
+def migration_003_create_analysis_tables() -> None:
+    """Create tables for embeddings, clustering runs, and trend snapshots."""
+    conn = get_connection()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS paper_embeddings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paper_id INTEGER NOT NULL UNIQUE,
+            embedding BLOB NOT NULL,
+            model_name TEXT NOT NULL,
+            embedding_dim INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS cluster_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_date DATE NOT NULL,
+            date_range_start DATE NOT NULL,
+            date_range_end DATE NOT NULL,
+            algorithm TEXT NOT NULL,
+            num_clusters INTEGER NOT NULL,
+            parameters TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS clusters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            cluster_label TEXT NOT NULL,
+            research_field_prefix TEXT,
+            centroid BLOB,
+            paper_count INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (run_id) REFERENCES cluster_runs(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS cluster_papers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cluster_id INTEGER NOT NULL,
+            paper_id INTEGER NOT NULL,
+            distance_to_centroid REAL,
+            FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
+            FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE,
+            UNIQUE(cluster_id, paper_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS trend_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_date DATE NOT NULL,
+            period_type TEXT NOT NULL,
+            period_start DATE NOT NULL,
+            period_end DATE NOT NULL,
+            field_trends TEXT NOT NULL,
+            analysis_summary TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(snapshot_date, period_type)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_embeddings_paper ON paper_embeddings(paper_id);
+        CREATE INDEX IF NOT EXISTS idx_cluster_runs_date ON cluster_runs(run_date);
+        CREATE INDEX IF NOT EXISTS idx_clusters_run ON clusters(run_id);
+        CREATE INDEX IF NOT EXISTS idx_clusters_field ON clusters(research_field_prefix);
+        CREATE INDEX IF NOT EXISTS idx_trends_date ON trend_snapshots(snapshot_date);
+    """)
+    conn.commit()
+
+
 def _ensure_migration_table() -> None:
     """Ensure the schema_migrations table exists."""
     conn = get_connection()

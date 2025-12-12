@@ -26,6 +26,7 @@
 - 若当天无论文，自动发送提醒邮件，便于监控任务状态
 - **文献管理**：持久化存储论文，跨运行去重，避免重复处理（v2.0+）
 - **多用户订阅**：支持多用户按分类/关键词订阅，个性化邮件投递（v2.0+）
+- **实验性分析**：embedding 缓存 + 聚类 + 趋势报告（`ai-mail-relay analyze ...`）
 
 ## 环境要求
 - Python 3.10+
@@ -97,6 +98,35 @@ SMTP_RETRY_BASE_DELAY=2.0    # 基础延迟（秒），默认 2.0
 | `LLM_RATE_LIMIT_RPM` | 每分钟最大请求数 | `20` |
 
 📖 **完整配置列表**: 查看 [配置参考文档](docs/configuration.md)
+
+### 分析配置（实验性）
+
+| 配置项 | 说明 | 默认值 |
+| --- | --- | --- |
+| `EMBEDDING_PROVIDER` | embedding 提供商（`qwen`/`local`） | `qwen` |
+| `EMBEDDING_MODEL` | embedding 模型名称 | `text-embedding-v3` |
+| `EMBEDDING_DIM` | embedding 维度 | `1024` |
+| `EMBEDDING_BATCH_SIZE` | 单次批量大小 | `25` |
+| `EMBEDDING_FALLBACK_LOCAL` | Qwen 调用失败时是否回退本地 deterministic embedding | `true` |
+| `CLUSTER_MIN_PAPERS` | 一个聚类的最小论文数 | `3` |
+| `CLUSTER_SIMILARITY_THRESHOLD` | cosine 相似度阈值 | `0.75` |
+| `CLUSTER_MAX_PER_FIELD` | 每个一级领域最多保留的聚类数 | `20` |
+| `TREND_LLM_MAX_PAPERS` | 趋势分析最多采样论文数 | `50` |
+| `ANALYSIS_REPORT_DIR` | 报告输出目录 | `./reports` |
+| `ANALYSIS_REPORT_FORMAT` | 报告格式 | `markdown` |
+
+> 提示：若未配置 `QWEN_API_KEY`，分析模块会回退到本地 deterministic embedding（仅用于开发验证）。
+> 推荐将上述变量与 `QWEN_API_KEY` 一并写入 `.env`（参考 `.env.example`）。
+
+`.env` 片段示例：
+```bash
+EMBEDDING_PROVIDER=qwen
+EMBEDDING_MODEL=text-embedding-v3
+EMBEDDING_DIM=1024
+EMBEDDING_BATCH_SIZE=25
+EMBEDDING_FALLBACK_LOCAL=true
+QWEN_API_KEY=sk-xxxx
+```
 
 ## 数据库配置（v2.0+）
 
@@ -173,6 +203,23 @@ ARXIV_FETCH_MODE=api
 ARXIV_API_MAX_RESULTS=200
 ARXIV_ALLOWED_CATEGORIES=cs.AI,cs.LG,cs.CV,cs.CL
 ```
+
+## 分析 CLI（实验性）
+
+> 需先执行 `ai-mail-relay db init` 并确保数据库中已有目标日期论文。
+
+示例：
+```bash
+ai-mail-relay analyze embed --date-range 2025-12-10
+ai-mail-relay analyze cluster --date-range 2025-12-10
+ai-mail-relay analyze trend --date-range 2025-12-01:2025-12-10 --period weekly
+ai-mail-relay analyze report --date-range 2025-12-10 --format html --output reports/report-2025-12-10.html
+```
+
+- `analyze embed`：批量生成/缓存 embedding（`--force` 可覆盖重算）
+- `analyze cluster`：按 research_field 粗分组 + embedding 细聚类，并写入数据库
+- `analyze trend`：输出领域分布与 LLM 趋势摘要，自动对比上一期快照（如有）
+- `analyze report`：聚类 + 趋势生成报告，支持 `--format markdown|html|json`（默认取 `ANALYSIS_REPORT_FORMAT`，输出到 `ANALYSIS_REPORT_DIR`）
 
 ### 并发控制说明
 

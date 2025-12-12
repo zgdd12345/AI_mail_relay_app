@@ -183,6 +183,32 @@ class PaperRepository:
 
         return [self._row_to_paper(row) for row in cursor.fetchall()]
 
+    def find_by_ingested_date_range(
+        self,
+        start_date: date,
+        end_date: date | None = None,
+    ) -> list[ArxivPaper]:
+        """Find papers whose fetched_at timestamps fall within a date range."""
+        from ..arxiv_parser import ArxivPaper
+
+        if end_date is None:
+            end_date = start_date
+
+        start_ts = f"{start_date.isoformat()} 00:00:00"
+        end_ts = f"{end_date.isoformat()} 23:59:59"
+
+        conn = get_connection()
+        cursor = conn.execute(
+            """
+            SELECT * FROM papers
+            WHERE fetched_at BETWEEN ? AND ?
+            ORDER BY fetched_at DESC, id DESC
+            """,
+            (start_ts, end_ts),
+        )
+
+        return [self._row_to_paper(row) for row in cursor.fetchall()]
+
     def find_for_report_date(self, report_date: date) -> list[ArxivPaper]:
         """Load papers for a report date.
 

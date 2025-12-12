@@ -242,6 +242,59 @@ class LLMConfig:
 
 
 @dataclass(frozen=True)
+class AnalysisConfig:
+    embedding_provider: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_PROVIDER", "qwen")
+    )
+    embedding_model: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
+    )
+    embedding_dim: int = field(
+        default_factory=lambda: int(os.getenv("EMBEDDING_DIM", "1024"))
+    )
+    embedding_batch_size: int = field(
+        default_factory=lambda: int(os.getenv("EMBEDDING_BATCH_SIZE", "25"))
+    )
+    embedding_fallback_local: bool = field(
+        default_factory=lambda: _get_env_bool("EMBEDDING_FALLBACK_LOCAL", True)
+    )
+    cluster_min_papers: int = field(
+        default_factory=lambda: int(os.getenv("CLUSTER_MIN_PAPERS", "3"))
+    )
+    cluster_similarity_threshold: float = field(
+        default_factory=lambda: float(os.getenv("CLUSTER_SIMILARITY_THRESHOLD", "0.75"))
+    )
+    cluster_max_per_field: int = field(
+        default_factory=lambda: int(os.getenv("CLUSTER_MAX_PER_FIELD", "20"))
+    )
+    trend_llm_max_papers: int = field(
+        default_factory=lambda: int(os.getenv("TREND_LLM_MAX_PAPERS", "50"))
+    )
+    analysis_report_dir: str = field(
+        default_factory=lambda: os.getenv("ANALYSIS_REPORT_DIR", "./reports")
+    )
+    analysis_report_format: str = field(
+        default_factory=lambda: os.getenv("ANALYSIS_REPORT_FORMAT", "markdown")
+    )
+
+    def validate(self) -> None:
+        if self.embedding_dim <= 0:
+            raise ValueError("EMBEDDING_DIM must be > 0.")
+        if self.embedding_batch_size <= 0:
+            raise ValueError("EMBEDDING_BATCH_SIZE must be > 0.")
+        if self.cluster_min_papers <= 0:
+            raise ValueError("CLUSTER_MIN_PAPERS must be > 0.")
+        if not (0.0 < self.cluster_similarity_threshold <= 1.0):
+            raise ValueError("CLUSTER_SIMILARITY_THRESHOLD must be in (0, 1].")
+        if self.cluster_max_per_field <= 0:
+            raise ValueError("CLUSTER_MAX_PER_FIELD must be > 0.")
+        if self.trend_llm_max_papers <= 0:
+            raise ValueError("TREND_LLM_MAX_PAPERS must be > 0.")
+        if self.analysis_report_format not in {"markdown", "html", "json"}:
+            raise ValueError("ANALYSIS_REPORT_FORMAT must be markdown, html, or json.")
+
+
+@dataclass(frozen=True)
 class Settings:
     mailbox: MailboxConfig = field(default_factory=MailboxConfig)
     outbox: OutboxConfig = field(default_factory=OutboxConfig)
@@ -250,6 +303,7 @@ class Settings:
     arxiv: ArxivConfig = field(default_factory=ArxivConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     multi_user: MultiUserConfig = field(default_factory=MultiUserConfig)
+    analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
 
     def validate(self) -> None:
         self.outbox.validate()
@@ -257,6 +311,7 @@ class Settings:
         self.arxiv.validate()
         self.database.validate()
         self.multi_user.validate()
+        self.analysis.validate()
 
 
 def today_string() -> str:
@@ -269,6 +324,7 @@ __all__ = [
     "OutboxConfig",
     "FilteringConfig",
     "LLMConfig",
+    "AnalysisConfig",
     "ArxivConfig",
     "DatabaseConfig",
     "MultiUserConfig",

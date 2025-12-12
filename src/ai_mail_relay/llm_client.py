@@ -177,6 +177,10 @@ class LLMClient:
         self._extract_paper_metadata(summary, paper)
         return summary
 
+    def generate_text(self, prompt: str) -> str:
+        """Generate free-form text with the configured provider."""
+        return self._call_provider_with_retry(prompt)
+
     def _build_single_paper_prompt(self, paper: ArxivPaper) -> str:
         """Build prompt for a single paper with research field requirement."""
         paper_info = [

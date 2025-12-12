@@ -13,6 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .config import Settings
+from .cli.analyze_commands import attach_analyze_subparser, handle_analyze_command
 from .cli.user_commands import attach_user_subparser, handle_user_command
 
 
@@ -46,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # user management commands
     attach_user_subparser(subparsers)
+    attach_analyze_subparser(subparsers)
 
     return parser
 
@@ -151,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     elif args.command == "user":
         return handle_user_command(args, settings)
+    elif args.command == "analyze":
+        return handle_analyze_command(args, settings)
 
     # Default: run the pipeline
     try:
